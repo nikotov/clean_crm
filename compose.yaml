@@ -1,0 +1,7 @@
+services:
+  clean-crm:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    image: clean-crm:latest

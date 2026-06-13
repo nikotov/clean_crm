@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero">
+    <div>
+      <div class="eyebrow">People</div>
+      <h1>Contacts</h1>
+      <p class="lede">A simple server-rendered list to anchor the first CRM workflow.</p>
+    </div>
+    <div class="badge">{{ contacts | length }} active records</div>
+  </section>
+
+  <section class="grid">
+    {% for contact in contacts %}
+      <article class="card">
+        <h2>{{ contact.name }}</h2>
+        <p>{{ contact.company }}</p>
+        <p><strong>Status:</strong> {{ contact.status }}</p>
+      </article>
+    {% endfor %}
+  </section>
+{% endblock %}
