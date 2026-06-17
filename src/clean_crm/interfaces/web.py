@@ -26,6 +26,21 @@ from ..application.UseCases import (
     UpdateTag,
     RemoveTagFromCustomer,
 )
+from ..campaigns.use_cases import (
+    CreateCampaign,
+    CreateCampaignTemplate,
+    LaunchCampaign,
+    ListCampaignTemplates,
+    ListCampaigns,
+    PreviewCampaignRecipients,
+    SyncCampaignTemplateStatus,
+)
+from ..campaigns.ycloud import YCloudWhatsAppClient
+from ..infrastructure.repositories import (
+    SQLAlchemyCampaignRecipientRepository,
+    SQLAlchemyCampaignRepository,
+    SQLAlchemyCampaignTemplateRepository,
+)
 from ..infrastructure.database import get_session
 from ..infrastructure.repositories import (
     SQLAlchemyCustomerRepository,
@@ -43,6 +58,32 @@ def _repositories(session: Session) -> tuple[SQLAlchemyCustomerRepository, SQLAl
     tag_repository = SQLAlchemyTagRepository(session)
     tag_map_repository = SQLAlchemyTagMapRepository(session)
     return customer_repository, tag_repository, tag_map_repository
+
+
+def _campaign_repositories(
+    session: Session,
+) -> tuple[
+    SQLAlchemyCustomerRepository,
+    SQLAlchemyTagRepository,
+    SQLAlchemyTagMapRepository,
+    SQLAlchemyCampaignTemplateRepository,
+    SQLAlchemyCampaignRepository,
+    SQLAlchemyCampaignRecipientRepository,
+]:
+    customer_repository = SQLAlchemyCustomerRepository(session)
+    tag_repository = SQLAlchemyTagRepository(session)
+    tag_map_repository = SQLAlchemyTagMapRepository(session)
+    template_repository = SQLAlchemyCampaignTemplateRepository(session)
+    campaign_repository = SQLAlchemyCampaignRepository(session)
+    recipient_repository = SQLAlchemyCampaignRecipientRepository(session)
+    return (
+        customer_repository,
+        tag_repository,
+        tag_map_repository,
+        template_repository,
+        campaign_repository,
+        recipient_repository,
+    )
 
 
 def _build_catalog(session: Session) -> dict[str, object]:
@@ -132,6 +173,76 @@ def _import_template_csv() -> str:
 
 def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _status_counts(items) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for item in items:
+        counts[str(item)] += 1
+    return counts
+
+
+def _campaign_workspace_context(
+    session: Session,
+    *,
+    selected_tag_ids: list[int] | None = None,
+    birthday_today: bool = False,
+    city: str = "",
+) -> dict[str, object]:
+    customer_repository, tag_repository, tag_map_repository, template_repository, campaign_repository, recipient_repository = _campaign_repositories(session)
+
+    tags = ListTags(tag_repository).execute()
+    templates = ListCampaignTemplates(template_repository).execute()
+    campaigns = ListCampaigns(campaign_repository).execute()
+    preview_filters = {
+        "tag_ids": selected_tag_ids or [],
+        "birthday_today": birthday_today,
+        "city": city or None,
+    }
+    preview_recipients = PreviewCampaignRecipients(customer_repository, tag_map_repository, tag_repository).execute(preview_filters)
+
+    template_rows: list[dict[str, object]] = []
+    template_status_counts: dict[str, int] = defaultdict(int)
+    for template in templates:
+        template_status_counts[template.status.value] += 1
+        template_rows.append(
+            {
+                "template": template,
+                "status_label": template.status.value.replace("_", " ").title(),
+                "status_class": template.status.value,
+            }
+        )
+
+    campaign_rows: list[dict[str, object]] = []
+    for campaign in campaigns:
+        recipient_results = recipient_repository.list_recipients_for_campaign(campaign.id)
+        recipient_status_counts = _status_counts(recipient.status.value for recipient in recipient_results)
+        template = template_repository.get_template_by_id(campaign.template_id)
+        campaign_rows.append(
+            {
+                "campaign": campaign,
+                "template": template,
+                "recipient_count": len(recipient_results),
+                "recipient_status_counts": recipient_status_counts,
+                "status_label": campaign.status.value.replace("_", " ").title(),
+                "status_class": campaign.status.value,
+            }
+        )
+
+    return {
+        "tags": tags,
+        "templates": template_rows,
+        "campaigns": campaign_rows,
+        "preview_recipients": preview_recipients,
+        "preview_count": len(preview_recipients),
+        "preview_filters": preview_filters,
+        "preview_filters_json": json.dumps(preview_filters),
+        "template_count": len(templates),
+        "approved_template_count": template_status_counts.get("approved", 0),
+        "pending_template_count": template_status_counts.get("pending_review", 0),
+        "draft_template_count": template_status_counts.get("draft", 0),
+        "campaign_count": len(campaigns),
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -377,3 +488,106 @@ def remove_tag_from_customer(
     _, _, tag_map_repository = _repositories(session)
     RemoveTagFromCustomer(tag_map_repository).execute(customer_id, tag_id)
     return _redirect("/contacts")
+
+
+@router.get("/campaigns/workspace", response_class=HTMLResponse)
+def campaigns_workspace(
+    request: Request,
+    tag_ids: list[int] | None = None,
+    birthday_today: bool = False,
+    city: str = "",
+    session: Session = Depends(get_session),
+) -> HTMLResponse:
+    context = _campaign_workspace_context(
+        session,
+        selected_tag_ids=tag_ids,
+        birthday_today=birthday_today,
+        city=city,
+    )
+    return templates.TemplateResponse(
+        request=request,
+        name="campaigns.html",
+        context={
+            "title": "Campaigns",
+            "active_page": "campaigns",
+            **context,
+        },
+    )
+
+
+@router.post("/campaigns/workspace/templates", include_in_schema=False)
+def create_campaign_template_ui(
+    name: str = Form(...),
+    ycloud_template_name: str = Form(""),
+    language_code: str = Form("en_US"),
+    category: str = Form("UTILITY"),
+    components_json: str = Form(...),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    _, _, _, template_repository, _, _ = _campaign_repositories(session)
+    components = json.loads(components_json)
+    if not isinstance(components, list):
+        raise HTTPException(status_code=400, detail="Template components must be a JSON array.")
+
+    CreateCampaignTemplate(template_repository).execute(
+        {
+            "name": name,
+            "ycloud_template_name": ycloud_template_name or name,
+            "language_code": language_code,
+            "category": category,
+            "components": components,
+        }
+    )
+    return _redirect("/campaigns/workspace")
+
+
+@router.post("/campaigns/workspace/templates/{template_id}/sync", include_in_schema=False)
+def sync_campaign_template_ui(template_id: int, session: Session = Depends(get_session)) -> RedirectResponse:
+    _, _, _, template_repository, _, _ = _campaign_repositories(session)
+    try:
+        SyncCampaignTemplateStatus(template_repository, YCloudWhatsAppClient()).execute(template_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _redirect("/campaigns/workspace")
+
+
+@router.post("/campaigns/workspace/campaigns", include_in_schema=False)
+def create_campaign_ui(
+    name: str = Form(...),
+    template_id: int = Form(...),
+    sender_phone_number: str = Form(...),
+    audience_rule_json: str = Form(...),
+    session: Session = Depends(get_session),
+) -> RedirectResponse:
+    _, _, _, template_repository, campaign_repository, _ = _campaign_repositories(session)
+    audience_rule = json.loads(audience_rule_json)
+    if not isinstance(audience_rule, dict):
+        raise HTTPException(status_code=400, detail="Audience rule must be a JSON object.")
+
+    CreateCampaign(campaign_repository, template_repository).execute(
+        {
+            "name": name,
+            "template_id": template_id,
+            "sender_phone_number": sender_phone_number,
+            "audience_rule": audience_rule,
+        }
+    )
+    return _redirect("/campaigns/workspace")
+
+
+@router.post("/campaigns/workspace/campaigns/{campaign_id}/launch", include_in_schema=False)
+def launch_campaign_ui(campaign_id: int, session: Session = Depends(get_session)) -> RedirectResponse:
+    customer_repository, tag_repository, tag_map_repository, template_repository, campaign_repository, recipient_repository = _campaign_repositories(session)
+    try:
+        LaunchCampaign(
+            campaign_repository=campaign_repository,
+            campaign_recipient_repository=recipient_repository,
+            campaign_template_repository=template_repository,
+            customer_repository=customer_repository,
+            tag_map_repository=tag_map_repository,
+            tag_repository=tag_repository,
+            ycloud_client=YCloudWhatsAppClient(),
+        ).execute(campaign_id)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _redirect("/campaigns/workspace")

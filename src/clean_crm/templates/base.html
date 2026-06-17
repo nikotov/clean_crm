@@ -321,7 +321,8 @@
       }
 
       .field input,
-      .field select {
+      .field select,
+      .field textarea {
         width: 100%;
         padding: 12px 14px;
         border-radius: 14px;
@@ -331,9 +332,21 @@
       }
 
       .field input:focus,
-      .field select:focus {
+      .field select:focus,
+      .field textarea:focus {
         outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
         outline-offset: 2px;
+      }
+
+      .field textarea {
+        min-height: 140px;
+        resize: vertical;
+      }
+
+      .field-help {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.5;
       }
 
       .button {
@@ -400,6 +413,154 @@
 
       .tag-pill form {
         margin: 0;
+      }
+
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--panel-strong) 84%, transparent);
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .status-chip.approved,
+      .status-chip.completed {
+        color: #0f766e;
+        background: color-mix(in srgb, rgba(15, 118, 110, 0.16) 70%, var(--panel));
+      }
+
+      .status-chip.pending_review,
+      .status-chip.scheduled,
+      .status-chip.sending {
+        color: #7c3aed;
+        background: color-mix(in srgb, rgba(124, 58, 237, 0.16) 70%, var(--panel));
+      }
+
+      .status-chip.draft,
+      .status-chip.failed,
+      .status-chip.rejected {
+        color: #b45309;
+        background: color-mix(in srgb, rgba(180, 83, 9, 0.14) 72%, var(--panel));
+      }
+
+      .status-chip.read,
+      .status-chip.delivered,
+      .status-chip.accepted {
+        color: #2563eb;
+        background: color-mix(in srgb, rgba(37, 99, 235, 0.14) 72%, var(--panel));
+      }
+
+      .status-chip.filtered,
+      .status-chip.unsubscribed {
+        color: #9333ea;
+        background: color-mix(in srgb, rgba(147, 51, 234, 0.14) 72%, var(--panel));
+      }
+
+      .mini-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .mini-list-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--panel) 92%, transparent);
+      }
+
+      .mini-list-item p {
+        margin: 4px 0 0;
+        color: var(--muted);
+      }
+
+      .campaign-audience-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .summary-tile {
+        padding: 14px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--panel-strong) 86%, transparent);
+      }
+
+      .summary-tile .label {
+        color: var(--muted);
+        font-size: 0.82rem;
+        margin-bottom: 6px;
+      }
+
+      .summary-tile .value {
+        font-size: 1.4rem;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      .campaign-grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 20px;
+      }
+
+      .campaign-grid .panel {
+        grid-column: span 6;
+      }
+
+      .campaign-grid .panel.wide {
+        grid-column: span 12;
+      }
+
+      .campaign-row {
+        display: grid;
+        gap: 12px;
+      }
+
+      .campaign-row-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .campaign-row-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 10px;
+      }
+
+      .check-option {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--panel) 92%, transparent);
+      }
+
+      .check-option input {
+        accent-color: var(--accent);
       }
 
       .inline-form {
@@ -574,6 +735,7 @@
         <nav class="nav">
           <a class="{% if active_page == 'home' %}active{% endif %}" href="/">Dashboard</a>
           <a class="{% if active_page == 'contacts' %}active{% endif %}" href="/contacts">Contacts</a>
+          <a class="{% if active_page == 'campaigns' %}active{% endif %}" href="/campaigns/workspace">Campaigns</a>
         </nav>
         <button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Toggle dark mode">
           <span aria-hidden="true" style="position:absolute;left:7px;top:7px;font-size:10px;line-height:1;color:var(--accent)">◐</span>

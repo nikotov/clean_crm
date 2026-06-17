@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero">
+    <div>
+      <div class="eyebrow">WhatsApp campaigns</div>
+      <h1>Approve one template and launch simple outbound campaigns.</h1>
+      <p class="lede">
+        Keep the workflow small: create a template, sync approval status with YCloud, choose a target
+        audience from CRM tags or basic rules, and launch the campaign.
+      </p>
+    </div>
+    <div class="badge">{{ approved_template_count }} approved · {{ preview_count }} in audience</div>
+  </section>
+
+  <section class="metric-grid">
+    <article class="metric">
+      <div class="label">Templates</div>
+      <div class="value">{{ template_count }}</div>
+    </article>
+    <article class="metric">
+      <div class="label">Approved</div>
+      <div class="value">{{ approved_template_count }}</div>
+    </article>
+    <article class="metric">
+      <div class="label">Campaigns</div>
+      <div class="value">{{ campaign_count }}</div>
+    </article>
+  </section>
+
+  <section class="campaign-grid" style="margin-top: 20px;">
+    <article class="panel wide">
+      <div class="panel-header">
+        <div>
+          <h2>Audience preview</h2>
+          <p>Use CRM tags plus a small set of rules to estimate the recipients before you create a campaign.</p>
+        </div>
+        <span class="status-chip approved">{{ preview_count }} matched</span>
+      </div>
+
+      <form class="form" method="get" action="/campaigns/workspace">
+        <div class="field">
+          <label>Tags</label>
+          <div class="checklist">
+            {% for tag in tags %}
+              <label class="check-option">
+                <span>{{ tag.name }}</span>
+                <input type="checkbox" name="tag_ids" value="{{ tag.id }}" {% if tag.id in preview_filters.tag_ids %}checked{% endif %}>
+              </label>
+            {% else %}
+              <div class="empty-state">Create tags first to use tag-based segmentation.</div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="campaign-audience-summary">
+          <div class="summary-tile">
+            <div class="label">Birthday today</div>
+            <div class="value">
+              <label class="selection-row" style="margin-top: 8px;">
+                <input type="checkbox" name="birthday_today" value="true" {% if preview_filters.birthday_today %}checked{% endif %}>
+                <span>Enabled</span>
+              </label>
+            </div>
+          </div>
+          <div class="summary-tile">
+            <div class="label">City</div>
+            <div class="value" style="font-size: 1rem; font-weight: 700; margin-top: 8px;">
+              <input type="text" name="city" value="{{ preview_filters.city or '' }}" placeholder="Optional city" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel-strong) 88%, transparent); color: var(--text);">
+            </div>
+          </div>
+          <div class="summary-tile">
+            <div class="label">Preview</div>
+            <div class="value">{{ preview_count }}</div>
+          </div>
+        </div>
+
+        <button class="button" type="submit">Preview audience</button>
+      </form>
+
+      <div class="mini-list" style="margin-top: 18px;">
+        {% for recipient in preview_recipients[:6] %}
+          <div class="mini-list-item">
+            <div>
+              <strong>{{ recipient.name }}</strong>
+              <p>{{ recipient.email }} · {{ recipient.cellphone or 'No phone' }}</p>
+            </div>
+            <span class="status-chip accepted">Eligible</span>
+          </div>
+        {% else %}
+          <div class="empty-state">No recipients match the current filters.</div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Create campaign</h2>
+          <p>Lock the audience rules first, then pick one approved template and send from a business number.</p>
+        </div>
+      </div>
+
+      <form class="form" method="post" action="/campaigns/workspace/campaigns">
+        <div class="field">
+          <label for="campaign-name">Campaign name</label>
+          <input id="campaign-name" name="name" type="text" required>
+        </div>
+        <div class="field">
+          <label for="campaign-template">Template</label>
+          <select id="campaign-template" name="template_id" required>
+            <option value="" selected disabled>Select a template</option>
+            {% for row in templates %}
+              {% set template = row.template %}
+              <option value="{{ template.id }}">{{ template.name }} · {{ template.language_code }} · {{ row.status_label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="campaign-sender">Sender phone number</label>
+          <input id="campaign-sender" name="sender_phone_number" type="tel" placeholder="+16505551234" required>
+        </div>
+        <div class="field">
+          <label for="campaign-audience-rule">Audience rule snapshot</label>
+          <textarea id="campaign-audience-rule" name="audience_rule_json" readonly>{{ preview_filters_json }}</textarea>
+          <div class="field-help">This captures the audience currently shown in the preview above.</div>
+        </div>
+        <button class="button" type="submit">Create campaign</button>
+      </form>
+    </article>
+  </section>
+
+  <section class="campaign-grid" style="margin-top: 20px;">
+    <article class="panel wide">
+      <div class="panel-header">
+        <div>
+          <h2>Templates</h2>
+          <p>Create a template locally, then sync approval status from YCloud before using it in a campaign.</p>
+        </div>
+        <span class="status-chip pending_review">{{ pending_template_count }} pending</span>
+      </div>
+
+      <div class="split" style="margin-top: 0;">
+        <div class="panel" style="grid-column: span 5; padding: 18px; box-shadow: none;">
+          <form class="form" method="post" action="/campaigns/workspace/templates">
+            <div class="field">
+              <label for="template-name">Template name</label>
+              <input id="template-name" name="name" type="text" placeholder="monthly_update" required>
+            </div>
+            <div class="field">
+              <label for="template-ycloud-name">YCloud template name</label>
+              <input id="template-ycloud-name" name="ycloud_template_name" type="text" placeholder="Defaults to the template name">
+            </div>
+            <div class="field">
+              <label for="template-language">Language code</label>
+              <input id="template-language" name="language_code" type="text" value="en_US" required>
+            </div>
+            <div class="field">
+              <label for="template-category">Category</label>
+              <select id="template-category" name="category">
+                <option value="UTILITY" selected>UTILITY</option>
+                <option value="MARKETING">MARKETING</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="template-components">Components JSON</label>
+              <textarea id="template-components" name="components_json" required>[{"type":"BODY","text":"Hello {{1}}, this is a campaign message.","example":{"body_text":[["Customer"]]}}]</textarea>
+              <div class="field-help">Provide the template body/components as a JSON array. Keep it simple for MVP: one body block is usually enough.</div>
+            </div>
+            <button class="button" type="submit">Create template</button>
+          </form>
+        </div>
+
+        <div class="panel" style="grid-column: span 7; padding: 18px; box-shadow: none;">
+          <div class="mini-list">
+            {% for row in templates %}
+              {% set template = row.template %}
+              <div class="mini-list-item">
+                <div>
+                  <strong>{{ template.name }}</strong>
+                  <p>
+                    {{ template.language_code }} · {{ template.category }}
+                    {% if template.approval_note %} · {{ template.approval_note }}{% endif %}
+                  </p>
+                </div>
+                <div class="inline-actions" style="align-items: center;">
+                  <span class="status-chip {{ row.status_class }}">{{ row.status_label }}</span>
+                  <form method="post" action="/campaigns/workspace/templates/{{ template.id }}/sync">
+                    <button class="button secondary small" type="submit">Sync status</button>
+                  </form>
+                </div>
+              </div>
+            {% else %}
+              <div class="empty-state">No templates yet. Create one to start a campaign.</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="campaign-grid" style="margin-top: 20px;">
+    <article class="panel wide">
+      <div class="panel-header">
+        <div>
+          <h2>Campaign launches</h2>
+          <p>Launch campaigns from the saved list once the template has been approved in YCloud.</p>
+        </div>
+      </div>
+
+      <div class="mini-list">
+        {% for row in campaigns %}
+          {% set campaign = row.campaign %}
+          <div class="mini-list-item campaign-row">
+            <div class="campaign-row-header">
+              <div>
+                <strong>{{ campaign.name }}</strong>
+                <p>
+                  Template #{{ campaign.template_id }}
+                  {% if row.template %} · {{ row.template.name }}{% endif %}
+                  · {{ row.recipient_count }} queued recipients
+                </p>
+              </div>
+              <div class="inline-actions">
+                <span class="status-chip {{ row.status_class }}">{{ row.status_label }}</span>
+                <form method="post" action="/campaigns/workspace/campaigns/{{ campaign.id }}/launch">
+                  <button class="button secondary small" type="submit" {% if row.template and row.template.status.value != 'approved' %}disabled{% endif %}>Launch</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="campaign-row-meta">
+              <span>Sender: {{ campaign.sender_phone_number }}</span>
+              <span>Scheduled: {{ campaign.scheduled_for or 'Not scheduled' }}</span>
+              <span>Audience: {{ campaign.audience_rule.tag_ids | length }} tags{% if campaign.audience_rule.birthday_today %} · birthday today{% endif %}{% if campaign.audience_rule.city %} · {{ campaign.audience_rule.city }}{% endif %}</span>
+              <span>Recipient states: {{ row.recipient_status_counts.get('accepted', 0) }} accepted, {{ row.recipient_status_counts.get('failed', 0) }} failed, {{ row.recipient_status_counts.get('delivered', 0) }} delivered, {{ row.recipient_status_counts.get('read', 0) }} read</span>
+            </div>
+          </div>
+        {% else %}
+          <div class="empty-state">No campaigns yet. Create one after selecting a template and audience.</div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+{% endblock %}
