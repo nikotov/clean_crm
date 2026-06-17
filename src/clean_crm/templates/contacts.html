@@ -3,20 +3,319 @@
 {% block content %}
   <section class="hero">
     <div>
-      <div class="eyebrow">People</div>
+      <div class="eyebrow">Customer index</div>
       <h1>Contacts</h1>
-      <p class="lede">A simple server-rendered list to anchor the first CRM workflow.</p>
+      <p class="lede">
+        Search, select, and batch manage customers from one table. Tags can be edited inline,
+        deleted, and applied to one or many customers.
+      </p>
     </div>
-    <div class="badge">{{ contacts | length }} active records</div>
+    <div class="badge">{{ search_results_count }} shown · {{ total_customers_count }} total</div>
   </section>
 
-  <section class="grid">
-    {% for contact in contacts %}
-      <article class="card">
-        <h2>{{ contact.name }}</h2>
-        <p>{{ contact.company }}</p>
-        <p><strong>Status:</strong> {{ contact.status }}</p>
-      </article>
-    {% endfor %}
+  <section class="split">
+    <article class="panel wide table-card">
+      <div class="panel-header">
+        <div>
+          <h2>Customer index</h2>
+          <p>Select individual customers or use select all for bulk actions.</p>
+        </div>
+        <span class="badge">{{ search_results_count }} rows</span>
+      </div>
+
+      <div class="toolbar">
+        <form class="inline-form" method="get" action="/contacts" style="flex: 1 1 360px;">
+          <div class="field">
+            <label for="customer-search">Search customers</label>
+            <input id="customer-search" name="q" type="search" value="{{ search_query or '' }}" placeholder="Search by name, email, or city">
+          </div>
+          <button class="button" type="submit">Search</button>
+          {% if search_query %}
+            <a class="button secondary" href="/contacts">Clear</a>
+          {% endif %}
+        </form>
+
+        <div class="toolbar-spacer"></div>
+
+        <label class="selection-row">
+          <input type="checkbox" data-select-all>
+          <span>Select all</span>
+        </label>
+        <span class="bulk-count"><span data-selected-count>0</span> selected</span>
+      </div>
+
+      <div class="index-table-wrap">
+        <table class="index-table">
+          <thead>
+            <tr>
+              <th class="checkbox-cell">Select</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>City</th>
+              <th>Tags</th>
+              <th class="actions-cell">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for card in customer_cards %}
+              {% set customer = card.customer %}
+              <tr data-customer-row>
+                <td class="checkbox-cell">
+                  <label class="selection-row" aria-label="Select {{ customer.name }}">
+                    <input type="checkbox" data-customer-select value="{{ customer.id }}">
+                  </label>
+                </td>
+                <td>
+                  <strong>{{ customer.name }}</strong>
+                  <div class="customer-meta" style="margin-top: 6px;">
+                    <span>#{{ customer.id }}</span>
+                  </div>
+                </td>
+                <td>{{ customer.email }}</td>
+                <td>{{ customer.city or '—' }}</td>
+                <td>
+                  <div class="tag-list">
+                    {% for tag in card.tags %}
+                      <div class="tag-pill">
+                        <span>{{ tag.name }}</span>
+                        <form method="post" action="/contacts/{{ customer.id }}/tags/{{ tag.id }}/remove">
+                          <button class="button secondary small" type="submit">Remove</button>
+                        </form>
+                      </div>
+                    {% else %}
+                      <div class="empty-state">No tags assigned</div>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td class="actions-cell">
+                  <div class="inline-actions">
+                    <form method="post" action="/contacts/{{ customer.id }}/delete">
+                      <button class="button secondary small" type="submit">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="6">
+                  <div class="empty-state">No customers yet. Add the first contact using the form on the right.</div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Create customer</h2>
+          <p>Save a customer into PostgreSQL.</p>
+        </div>
+      </div>
+      <form class="form" method="post" action="/contacts">
+        <div class="field">
+          <label for="contact-name">Name</label>
+          <input id="contact-name" name="name" type="text" required>
+        </div>
+        <div class="field">
+          <label for="contact-email">Email</label>
+          <input id="contact-email" name="email" type="email" required>
+        </div>
+        <div class="field">
+          <label for="contact-city">City</label>
+          <input id="contact-city" name="city" type="text">
+        </div>
+        <div class="field">
+          <label for="contact-birthdate">Birthdate</label>
+          <input id="contact-birthdate" name="birthdate" type="date">
+        </div>
+        <button class="button" type="submit">Add contact</button>
+      </form>
+
+      <div style="margin-top: 20px;">
+        <div class="panel-header">
+          <div>
+            <h2>Tag editor</h2>
+            <p>Create, rename, and delete tags.</p>
+          </div>
+        </div>
+        <form class="form" method="post" action="/tags">
+          <div class="field">
+            <label for="tag-name">New tag</label>
+            <input id="tag-name" name="name" type="text" required>
+          </div>
+          <button class="button" type="submit">Add tag</button>
+        </form>
+
+        <div class="stack" style="margin-top: 18px;">
+          {% for tag in tags %}
+            <div class="inline-form">
+              <form class="inline-form" method="post" action="/tags/{{ tag.id }}">
+                <div class="field">
+                  <label for="tag-name-{{ tag.id }}">Tag name</label>
+                  <input id="tag-name-{{ tag.id }}" name="name" type="text" value="{{ tag.name }}" required>
+                </div>
+                <span class="tag-pill">{{ tag_usage_counts.get(tag.id, 0) }} uses</span>
+                <button class="button secondary" type="submit">Save</button>
+              </form>
+              <form method="post" action="/tags/{{ tag.id }}/delete">
+                <button class="button secondary" type="submit">Delete</button>
+              </form>
+            </div>
+          {% else %}
+            <div class="empty-state">No tags have been created yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </article>
   </section>
+
+  <section class="split" style="margin-top: 20px;">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Batch edit customers</h2>
+          <p>Update shared fields for the selected rows.</p>
+        </div>
+      </div>
+      <form class="form" method="post" action="/contacts/batch-edit" data-selection-form>
+        <div data-selected-target hidden></div>
+        <div class="field">
+          <label for="batch-city">City</label>
+          <input id="batch-city" name="city" type="text" placeholder="Optional city update">
+        </div>
+        <div class="field">
+          <label for="batch-birthdate">Birthdate</label>
+          <input id="batch-birthdate" name="birthdate" type="date">
+        </div>
+        <button class="button" type="submit">Apply batch edit</button>
+      </form>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Batch assign tag</h2>
+          <p>Assign one tag to all selected customers.</p>
+        </div>
+      </div>
+      <form class="form" method="post" action="/contacts/batch-assign-tag" data-selection-form>
+        <div data-selected-target hidden></div>
+        <div class="field">
+          <label for="batch-tag-id">Tag</label>
+          <select id="batch-tag-id" name="tag_id" required>
+            <option value="" selected disabled>Select a tag</option>
+            {% for tag in tags %}
+              <option value="{{ tag.id }}">{{ tag.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="button" type="submit">Assign tag</button>
+      </form>
+    </article>
+  </section>
+
+  <section class="panel" style="margin-top: 20px;">
+    <div class="panel-header">
+      <div>
+        <h2>Batch apply tags</h2>
+        <p>Apply several tags to the selected customers at once.</p>
+      </div>
+    </div>
+    <form class="form" method="post" action="/contacts/batch-edit-tags" data-selection-form>
+      <div data-selected-target hidden></div>
+      <div class="field">
+        <label>Tags to apply</label>
+        <div class="stack">
+          {% for tag in tags %}
+            <label class="tag-pill" style="justify-content: space-between;">
+              <span>{{ tag.name }}</span>
+              <input type="checkbox" name="tag_ids" value="{{ tag.id }}">
+            </label>
+          {% else %}
+            <div class="empty-state">No tags available yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+      <button class="button" type="submit">Apply selected tags</button>
+    </form>
+  </section>
+
+  <script>
+    (function () {
+      const selectionCheckboxes = Array.from(document.querySelectorAll("[data-customer-select]"));
+      const selectAllCheckbox = document.querySelector("[data-select-all]");
+      const selectedCount = document.querySelector("[data-selected-count]");
+      const selectionForms = Array.from(document.querySelectorAll("[data-selection-form]"));
+
+      function selectedIds() {
+        return selectionCheckboxes.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+      }
+
+      function syncSelectionState() {
+        const ids = selectedIds();
+        const allSelected = selectionCheckboxes.length > 0 && ids.length === selectionCheckboxes.length;
+        const someSelected = ids.length > 0 && !allSelected;
+
+        if (selectedCount) {
+          selectedCount.textContent = String(ids.length);
+        }
+
+        if (selectAllCheckbox) {
+          selectAllCheckbox.checked = allSelected;
+          selectAllCheckbox.indeterminate = someSelected;
+        }
+
+        selectionCheckboxes.forEach((checkbox) => {
+          const row = checkbox.closest("tr");
+          if (row) {
+            row.classList.toggle("is-selected", checkbox.checked);
+          }
+        });
+
+        selectionForms.forEach((form) => {
+          const target = form.querySelector("[data-selected-target]");
+          if (!target) {
+            return;
+          }
+
+          target.innerHTML = "";
+          ids.forEach((id) => {
+            const hidden = document.createElement("input");
+            hidden.type = "hidden";
+            hidden.name = "customer_ids";
+            hidden.value = id;
+            target.appendChild(hidden);
+          });
+        });
+      }
+
+      selectionCheckboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", syncSelectionState);
+      });
+
+      if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener("change", () => {
+          selectionCheckboxes.forEach((checkbox) => {
+            checkbox.checked = selectAllCheckbox.checked;
+          });
+          syncSelectionState();
+        });
+      }
+
+      selectionForms.forEach((form) => {
+        form.addEventListener("submit", (event) => {
+          syncSelectionState();
+          if (selectedIds().length === 0) {
+            event.preventDefault();
+            window.alert("Select at least one customer first.");
+          }
+        });
+      });
+
+      syncSelectionState();
+    })();
+  </script>
 {% endblock %}

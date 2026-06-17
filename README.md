@@ -6,7 +6,30 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 
 - Python 3.12
 - FastAPI for the delivery layer
-- Uvicorn for local serving
+- SQLAlchemy + PostgreSQL for persistence
+- Alembic for schema migrations
+
+## Run With Docker
+
+1. Build and start the full stack:
+
+	```bash
+	docker compose up --build
+	```
+
+2. Open the app at http://localhost:8000
+
+3. Apply migrations manually when needed:
+
+	```bash
+	docker compose exec clean-crm python -m clean_crm.cli migrate
+	```
+
+4. Roll migrations back if needed:
+
+	```bash
+	docker compose exec clean-crm python -m clean_crm.cli downgrade base
+	```
 
 ## Structure
 
@@ -18,4 +41,4 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 
 ## Current status
 
-This repo currently contains the Python architecture skeleton only. The next step is to implement the first feature slice, usually contacts.
+The MVP now includes live contacts, tags, tag assignment, PostgreSQL persistence, and Alembic migrations wired through Docker.

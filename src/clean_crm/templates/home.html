@@ -3,32 +3,70 @@
 {% block content %}
   <section class="hero">
     <div>
-      <div class="eyebrow">CRM workspace</div>
-      <h1>Run the core of the business from one clean place.</h1>
+      <div class="eyebrow">Live dashboard</div>
+      <h1>Run the CRM from one clean place.</h1>
       <p class="lede">
-        This server-rendered shell gives the CRM a practical starting point for contacts, notes,
-        and the workflows that will grow around them.
+        The app is now backed by PostgreSQL and SQLAlchemy, with contacts and tags flowing through
+        the actual backend instead of static sample data.
       </p>
     </div>
-    <div class="badge">Python + FastAPI + Jinja2</div>
+    <div class="badge">{{ customer_count }} contacts · {{ tag_count }} tags</div>
   </section>
 
-  <section class="grid">
-    <article class="card">
-      <h2>Contacts</h2>
-      <p>Track people, companies, and the relationships that drive your pipeline.</p>
+  <section class="metric-grid">
+    <article class="metric">
+      <div class="label">Contacts</div>
+      <div class="value">{{ customer_count }}</div>
     </article>
-    <article class="card">
-      <h2>Notes</h2>
-      <p>Capture context without forcing it into an overly rigid workflow too early.</p>
+    <article class="metric">
+      <div class="label">Tags</div>
+      <div class="value">{{ tag_count }}</div>
     </article>
-    <article class="card">
-      <h2>Modules</h2>
-      <p>Keep the domain layered so new features can be added without flattening the core.</p>
+    <article class="metric">
+      <div class="label">Assignments</div>
+      <div class="value">{{ assignment_count }}</div>
     </article>
-    <article class="card">
-      <h2>UI Shell</h2>
-      <p>Use server-rendered pages first, then add richer interactions where they earn their keep.</p>
+  </section>
+
+  <section class="split">
+    <article class="panel wide">
+      <div class="panel-header">
+        <div>
+          <h2>Recent contacts</h2>
+          <p>The latest records from the live database.</p>
+        </div>
+        <a class="button secondary" href="/contacts">Manage contacts</a>
+      </div>
+      <div class="stack">
+        {% for customer in recent_customers %}
+          <div class="customer-card">
+            <div class="panel-header" style="margin-bottom: 0;">
+              <div>
+                <h3>{{ customer.name }}</h3>
+                <p>{{ customer.email }}</p>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="empty-state">No contacts yet. Add the first one from the contacts page.</div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Recent tags</h2>
+          <p>Labels available for customer assignment.</p>
+        </div>
+      </div>
+      <div class="tag-list">
+        {% for tag in recent_tags %}
+          <span class="tag-pill">{{ tag.name }}</span>
+        {% else %}
+          <div class="empty-state">No tags yet.</div>
+        {% endfor %}
+      </div>
     </article>
   </section>
 {% endblock %}

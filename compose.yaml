@@ -1,7 +1,23 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: clean_crm
+      POSTGRES_USER: clean_crm
+      POSTGRES_PASSWORD: clean_crm
+    volumes:
+      - clean_crm_postgres:/var/lib/postgresql/data
+
   clean-crm:
     build:
       context: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://clean_crm:clean_crm@db:5432/clean_crm
+    depends_on:
+      - db
     ports:
       - "8000:8000"
     image: clean-crm:latest
+
+volumes:
+  clean_crm_postgres:

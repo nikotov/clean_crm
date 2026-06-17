@@ -35,3 +35,10 @@ class Tag:
     id: int
     name: str
     created_at: datetime
+
+
+@dataclass
+class TagMap:
+    customer_id: int
+    tag_id: int
+    created_at: datetime
