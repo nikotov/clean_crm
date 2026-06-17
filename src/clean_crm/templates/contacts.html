@@ -27,12 +27,13 @@
         <form class="inline-form" method="get" action="/contacts" style="flex: 1 1 360px;">
           <div class="field">
             <label for="customer-search">Search customers</label>
-            <input id="customer-search" name="q" type="search" value="{{ search_query or '' }}" placeholder="Search by name, email, or city">
+            <input id="customer-search" name="q" type="search" value="{{ search_query or '' }}" placeholder="Search by name, email, city, or cellphone">
           </div>
           <button class="button" type="submit">Search</button>
           {% if search_query %}
             <a class="button secondary" href="/contacts">Clear</a>
           {% endif %}
+          <a class="button secondary" href="/contacts/import">Import CSV</a>
         </form>
 
         <div class="toolbar-spacer"></div>
@@ -51,6 +52,7 @@
               <th class="checkbox-cell">Select</th>
               <th>Name</th>
               <th>Email</th>
+              <th>Cellphone</th>
               <th>City</th>
               <th>Tags</th>
               <th class="actions-cell">Actions</th>
@@ -72,6 +74,7 @@
                   </div>
                 </td>
                 <td>{{ customer.email }}</td>
+                <td>{{ customer.cellphone or '—' }}</td>
                 <td>{{ customer.city or '—' }}</td>
                 <td>
                   <div class="tag-list">
@@ -122,6 +125,10 @@
         <div class="field">
           <label for="contact-email">Email</label>
           <input id="contact-email" name="email" type="email" required>
+        </div>
+        <div class="field">
+          <label for="contact-cellphone">Cellphone</label>
+          <input id="contact-cellphone" name="cellphone" type="tel" placeholder="Optional phone number">
         </div>
         <div class="field">
           <label for="contact-city">City</label>
@@ -182,6 +189,10 @@
       </div>
       <form class="form" method="post" action="/contacts/batch-edit" data-selection-form>
         <div data-selected-target hidden></div>
+        <div class="field">
+          <label for="batch-cellphone">Cellphone</label>
+          <input id="batch-cellphone" name="cellphone" type="tel" placeholder="Optional batch phone update">
+        </div>
         <div class="field">
           <label for="batch-city">City</label>
           <input id="batch-city" name="city" type="text" placeholder="Optional city update">

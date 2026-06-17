@@ -5,6 +5,15 @@ from ..domain.Entities import Customer, Tag, TagMap
 from ..domain.Repositories import CustomerRepository, TagMapRepository, TagRepository
 
 
+def _parse_optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return None
+
+
 class CreateCustomer:
     def __init__(self, customer_repository: CustomerRepository):
         self.customer_repository = customer_repository
@@ -20,6 +29,7 @@ class CreateCustomer:
             email=str(customer_data["email"]),
             created_at=datetime.utcnow(),
             city=str(customer_data.get("city")) if customer_data.get("city") else None,
+            cellphone=str(customer_data.get("cellphone")) if customer_data.get("cellphone") else None,
             birthdate=birthdate_value if isinstance(birthdate_value, datetime) else None,
         )
         return self.customer_repository.save_customer(customer)
@@ -38,6 +48,10 @@ class UpdateCustomer:
         if isinstance(birthdate_value, str) and birthdate_value:
             updated_data = dict(updated_data)
             updated_data["birthdate"] = datetime.fromisoformat(birthdate_value)
+
+        if updated_data.get("cellphone") == "":
+            updated_data = dict(updated_data)
+            updated_data["cellphone"] = None
 
         for key, value in updated_data.items():
             if key != "id" and hasattr(customer, key):
@@ -85,6 +99,10 @@ class BatchUpdateCustomers:
         if isinstance(birthdate_value, str) and birthdate_value:
             updated_data = dict(updated_data)
             updated_data["birthdate"] = datetime.fromisoformat(birthdate_value)
+
+        if updated_data.get("cellphone") == "":
+            updated_data = dict(updated_data)
+            updated_data["cellphone"] = None
 
         for customer_id in customer_ids:
             customer = self.customer_repository.get_customer_by_id(customer_id)
@@ -271,6 +289,70 @@ class BatchEditCustomerTags:
 
         return updated_assignments
 
+
+class ImportCustomers:
+    def __init__(
+        self,
+        customer_repository: CustomerRepository,
+        tag_repository: TagRepository,
+        tag_map_repository: TagMapRepository,
+    ):
+        self.customer_repository = customer_repository
+        self.tag_repository = tag_repository
+        self.tag_map_repository = tag_map_repository
+
+    def execute(self, rows: list[Mapping[str, object]], tag_ids: list[int]) -> list[Customer]:
+        imported_customers: list[Customer] = []
+
+        for row in rows:
+            email = str(row.get("email", "")).strip()
+            name = str(row.get("name", "")).strip()
+            if not email or not name:
+                continue
+
+            birthdate_value = row.get("birthdate")
+            if isinstance(birthdate_value, str) and birthdate_value:
+                birthdate_value = datetime.fromisoformat(birthdate_value)
+
+            existing_customer = self.customer_repository.get_customer_by_email(email)
+            if existing_customer is None:
+                customer = Customer(
+                    id=0,
+                    name=name,
+                    email=email,
+                    created_at=datetime.utcnow(),
+                    city=str(row.get("city")) if row.get("city") else None,
+                    cellphone=str(row.get("cellphone")) if row.get("cellphone") else None,
+                    birthdate=birthdate_value if isinstance(birthdate_value, datetime) else None,
+                    age=_parse_optional_int(row.get("age")),
+                )
+            else:
+                customer = existing_customer
+                customer.name = name
+                customer.city = str(row.get("city")) if row.get("city") else None
+                customer.cellphone = str(row.get("cellphone")) if row.get("cellphone") else None
+                customer.birthdate = birthdate_value if isinstance(birthdate_value, datetime) else None
+                customer.age = _parse_optional_int(row.get("age"))
+
+            saved_customer = self.customer_repository.save_customer(customer)
+            imported_customers.append(saved_customer)
+
+            for tag_id in tag_ids:
+                tag = self.tag_repository.get_tag_by_id(tag_id)
+                if tag is None:
+                    continue
+
+                if self.tag_map_repository.get_tag_map(saved_customer.id, tag_id) is None:
+                    self.tag_map_repository.save_tag_map(
+                        TagMap(
+                            customer_id=saved_customer.id,
+                            tag_id=tag_id,
+                            created_at=datetime.utcnow(),
+                        )
+                    )
+
+        return imported_customers
+
 createCustomer = CreateCustomer
 updateCustomer = UpdateCustomer
 deleteCustomer = DeleteCustomer
@@ -286,3 +368,4 @@ assignTagToCustomer = AssignTagToCustomer
 removeTagFromCustomer = RemoveTagFromCustomer
 listTagMaps = ListTagMaps
 batchEditCustomerTags = BatchEditCustomerTags
+importCustomers = ImportCustomers

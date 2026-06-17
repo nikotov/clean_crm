@@ -19,6 +19,7 @@ class CustomerModel(Base):
     birthdate: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     city: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cellphone: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
     tag_maps: Mapped[list["TagMapModel"]] = relationship(
         back_populates="customer",

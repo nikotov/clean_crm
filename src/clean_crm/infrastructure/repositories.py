@@ -16,6 +16,7 @@ def _customer_to_domain(model: CustomerModel) -> Customer:
         birthdate=model.birthdate,
         age=model.age,
         city=model.city,
+        cellphone=model.cellphone,
     )
 
 
@@ -86,6 +87,13 @@ class SQLAlchemyCustomerRepository(CustomerRepository):
             return None
         return _customer_to_domain(model)
 
+    def get_customer_by_email(self, email: str) -> Customer | None:
+        stmt = select(CustomerModel).where(CustomerModel.email == email)
+        model = self.session.execute(stmt).scalar_one_or_none()
+        if model is None:
+            return None
+        return _customer_to_domain(model)
+
     def save_customer(self, customer: Customer) -> Customer:
         model = self.session.get(CustomerModel, customer.id)
         if model is None:
@@ -97,6 +105,7 @@ class SQLAlchemyCustomerRepository(CustomerRepository):
                 birthdate=customer.birthdate,
                 age=customer.age,
                 city=customer.city,
+                cellphone=customer.cellphone,
             )
             self.session.add(model)
         else:
@@ -107,6 +116,7 @@ class SQLAlchemyCustomerRepository(CustomerRepository):
             model.birthdate = customer.birthdate
             model.age = customer.age
             model.city = customer.city
+            model.cellphone = customer.cellphone
         self.session.flush()
         self.session.commit()
         return _customer_to_domain(model)
@@ -133,6 +143,7 @@ class SQLAlchemyCustomerRepository(CustomerRepository):
                 CustomerModel.name.ilike(pattern)
                 | CustomerModel.email.ilike(pattern)
                 | CustomerModel.city.ilike(pattern)
+                | CustomerModel.cellphone.ilike(pattern)
             )
             .order_by(CustomerModel.id)
         )

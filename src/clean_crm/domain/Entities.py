@@ -12,6 +12,7 @@ class Customer:
     birthdate: Optional[datetime] = None
     age: Optional[int] = None
     city: Optional[str] = None
+    cellphone: Optional[str] = None
 
 @dataclass
 class User:
