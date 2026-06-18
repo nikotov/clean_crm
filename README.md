@@ -11,21 +11,54 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 
 ## Run With Docker
 
-1. Build and start the full stack:
+1. Set the required environment values in your shell or a local `.env` file. At minimum you need:
+
+	- `DATABASE_URL`
+	- `POSTGRES_DB`
+	- `POSTGRES_USER`
+	- `POSTGRES_PASSWORD`
+	- `CRM_JWT_SECRET`
+
+	Optional bootstrap values:
+
+	- `CRM_ADMIN_USERNAME`
+	- `CRM_ADMIN_PASSWORD`
+	- `CRM_ADMIN_EMAIL`
+	- `CRM_ADMIN_PASSWORD_HASH`
+
+	YCloud campaign secrets, if you use that module:
+
+	- `YCLOUD_API_KEY`
+	- `YCLOUD_WEBHOOK_SECRET`
+
+2. Build and start the full stack:
 
 	```bash
 	docker compose up --build
 	```
 
-2. Open the app at http://localhost:8000
+3. Open the app at http://localhost:8000
 
-3. Apply migrations manually when needed:
+4. Create a user from the CLI if you did not set bootstrap admin values:
+
+	```bash
+	docker compose exec clean-crm python -m clean_crm.cli users add --username admin --email admin@clean-crm.local --password 'choose-a-password'
+	```
+
+5. List and remove users from the CLI when needed:
+
+	```bash
+	docker compose exec clean-crm python -m clean_crm.cli users list
+	docker compose exec clean-crm python -m clean_crm.cli users remove --username admin
+	```
+
+6. Apply migrations manually when needed:
 
 	```bash
 	docker compose exec clean-crm python -m clean_crm.cli migrate
 	```
 
-4. Roll migrations back if needed:
+7. Roll migrations back if needed:
 
 	```bash
 	docker compose exec clean-crm python -m clean_crm.cli downgrade base
@@ -41,4 +74,4 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 
 ## Current status
 
-The MVP now includes live contacts, tags, tag assignment, PostgreSQL persistence, and Alembic migrations wired through Docker.
+The MVP now includes live contacts, tags, tag assignment, PostgreSQL persistence, Alembic migrations wired through Docker, a JWT-protected login screen for the whole app, and CLI user management for adding or removing application users.

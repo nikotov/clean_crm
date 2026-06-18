@@ -3,7 +3,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from ..campaigns.domain import CampaignAudienceRule, CampaignTemplateStatus
 from ..campaigns.use_cases import (
     CreateCampaign,
     CreateCampaignTemplate,
@@ -15,7 +14,6 @@ from ..campaigns.use_cases import (
     SyncCampaignTemplateStatus,
 )
 from ..campaigns.ycloud import YCloudWhatsAppClient, parse_webhook_event, verify_webhook_signature
-from ..domain.Repositories import CustomerRepository, TagMapRepository, TagRepository
 from ..infrastructure.database import get_session
 from ..infrastructure.repositories import (
     SQLAlchemyCampaignRecipientRepository,

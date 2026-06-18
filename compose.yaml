@@ -2,9 +2,9 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: clean_crm
-      POSTGRES_USER: clean_crm
-      POSTGRES_PASSWORD: clean_crm
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - clean_crm_postgres:/var/lib/postgresql/data
 
@@ -12,7 +12,11 @@ services:
     build:
       context: .
     environment:
-      DATABASE_URL: postgresql+psycopg://clean_crm:clean_crm@db:5432/clean_crm
+      DATABASE_URL: ${DATABASE_URL}
+      CRM_JWT_SECRET: ${CRM_JWT_SECRET}
+      CRM_ADMIN_USERNAME: ${CRM_ADMIN_USERNAME}
+      CRM_ADMIN_PASSWORD: ${CRM_ADMIN_PASSWORD}
+      CRM_ADMIN_EMAIL: ${CRM_ADMIN_EMAIL}
     depends_on:
       - db
     ports:

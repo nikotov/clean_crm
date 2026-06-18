@@ -9,7 +9,27 @@ class UserRepository(ABC):
         pass
 
     @abstractmethod
+    def get_user_by_username(self, username: str) -> User | None:
+        pass
+
+    @abstractmethod
+    def get_user_by_email(self, email: str) -> User | None:
+        pass
+
+    @abstractmethod
     def save_user(self, user: User) -> User:
+        pass
+
+    @abstractmethod
+    def update_user_last_login(self, user_id: int, last_login) -> User | None:
+        pass
+
+    @abstractmethod
+    def delete_user(self, user_id: int) -> None:
+        pass
+
+    @abstractmethod
+    def list_users(self) -> list[User]:
         pass
 
 

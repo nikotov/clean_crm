@@ -100,6 +100,20 @@ class SQLAlchemyUserRepository(UserRepository):
             return None
         return _user_to_domain(model)
 
+    def get_user_by_username(self, username: str) -> User | None:
+        stmt = select(UserModel).where(UserModel.username == username)
+        model = self.session.execute(stmt).scalar_one_or_none()
+        if model is None:
+            return None
+        return _user_to_domain(model)
+
+    def get_user_by_email(self, email: str) -> User | None:
+        stmt = select(UserModel).where(UserModel.email == email)
+        model = self.session.execute(stmt).scalar_one_or_none()
+        if model is None:
+            return None
+        return _user_to_domain(model)
+
     def save_user(self, user: User) -> User:
         model = self.session.get(UserModel, user.id)
         if model is None:
@@ -114,6 +128,23 @@ class SQLAlchemyUserRepository(UserRepository):
         self.session.flush()
         self.session.commit()
         return _user_to_domain(model)
+
+    def update_user_last_login(self, user_id: int, last_login) -> User | None:
+        model = self.session.get(UserModel, user_id)
+        if model is None:
+            return None
+
+        model.last_login = last_login
+        self.session.flush()
+        self.session.commit()
+        return _user_to_domain(model)
+
+    def delete_user(self, user_id: int) -> None:
+        model = self.session.get(UserModel, user_id)
+        if model is None:
+            return
+        self.session.delete(model)
+        self.session.commit()
 
     def list_users(self) -> list[User]:
         models = self.session.execute(select(UserModel).order_by(UserModel.id)).scalars().all()
