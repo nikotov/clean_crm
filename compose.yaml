@@ -14,9 +14,6 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       CRM_JWT_SECRET: ${CRM_JWT_SECRET}
-      CRM_ADMIN_USERNAME: ${CRM_ADMIN_USERNAME}
-      CRM_ADMIN_PASSWORD: ${CRM_ADMIN_PASSWORD}
-      CRM_ADMIN_EMAIL: ${CRM_ADMIN_EMAIL}
     depends_on:
       - db
     ports:

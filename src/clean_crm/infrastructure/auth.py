@@ -185,26 +185,3 @@ def delete_user(session: Session, *, user_id: int | None = None, username: str |
 def list_users(session: Session) -> list[User]:
     user_repository = get_user_repository(session)
     return user_repository.list_users()
-
-
-def bootstrap_admin_user(session: Session) -> None:
-    username = environ.get("CRM_ADMIN_USERNAME")
-    password = environ.get("CRM_ADMIN_PASSWORD")
-    email = environ.get("CRM_ADMIN_EMAIL")
-    password_hash = environ.get("CRM_ADMIN_PASSWORD_HASH")
-
-    if not username or not email or (not password and not password_hash):
-        return
-
-    user_repository = get_user_repository(session)
-    existing_user = user_repository.get_user_by_username(username)
-    if existing_user is not None:
-        return
-
-    create_user(
-        session,
-        username=username,
-        email=email,
-        password=password,
-        password_hash=password_hash,
-    )

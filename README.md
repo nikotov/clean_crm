@@ -11,20 +11,13 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 
 ## Run With Docker
 
-1. Set the required environment values in your shell or a local `.env` file. At minimum you need:
+1. Copy [`.env.example`](.env.example) to `.env`, then fill in the values for this machine. At minimum you need:
 
 	- `DATABASE_URL`
 	- `POSTGRES_DB`
 	- `POSTGRES_USER`
 	- `POSTGRES_PASSWORD`
 	- `CRM_JWT_SECRET`
-
-	Optional bootstrap values:
-
-	- `CRM_ADMIN_USERNAME`
-	- `CRM_ADMIN_PASSWORD`
-	- `CRM_ADMIN_EMAIL`
-	- `CRM_ADMIN_PASSWORD_HASH`
 
 	YCloud campaign secrets, if you use that module:
 
@@ -39,10 +32,10 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 
 3. Open the app at http://localhost:8000
 
-4. Create a user from the CLI if you did not set bootstrap admin values:
+4. Create the first user from the CLI:
 
 	```bash
-	docker compose exec clean-crm python -m clean_crm.cli users add --username admin --email admin@clean-crm.local --password 'choose-a-password'
+	docker compose exec clean-crm python -m clean_crm.cli users add --username admin --email you@example.com --password 'choose-a-password'
 	```
 
 5. List and remove users from the CLI when needed:
@@ -50,6 +43,7 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 	```bash
 	docker compose exec clean-crm python -m clean_crm.cli users list
 	docker compose exec clean-crm python -m clean_crm.cli users remove --username admin
+	docker compose exec clean-crm python -m clean_crm.cli users remove --id 1
 	```
 
 6. Apply migrations manually when needed:
@@ -75,3 +69,13 @@ Simple CRM web app scaffolded with Clean Architecture boundaries.
 ## Current status
 
 The MVP now includes live contacts, tags, tag assignment, PostgreSQL persistence, Alembic migrations wired through Docker, a JWT-protected login screen for the whole app, and CLI user management for adding or removing application users.
+
+## Secrets To Add
+
+Store these outside the repo and inject them at deploy time:
+
+- `DATABASE_URL`
+- `POSTGRES_PASSWORD`
+- `CRM_JWT_SECRET`
+- `YCLOUD_API_KEY` if you use WhatsApp campaigns
+- `YCLOUD_WEBHOOK_SECRET` if you use WhatsApp campaigns

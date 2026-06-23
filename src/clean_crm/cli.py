@@ -9,7 +9,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 
-from .infrastructure.auth import bootstrap_admin_user, create_user, delete_user, list_users
+from .infrastructure.auth import create_user, delete_user, list_users, hash_password
 from .infrastructure.database import DATABASE_URL
 from .infrastructure.database import SessionLocal
 
@@ -56,8 +56,6 @@ def downgrade(revision: str) -> None:
 
 def serve() -> None:
     migrate()
-    with SessionLocal() as session:
-        bootstrap_admin_user(session)
     uvicorn.run("clean_crm.main:app", host="0.0.0.0", port=8000, reload=False)
 
 
@@ -80,6 +78,10 @@ def remove_user(user_id: int | None = None, username: str | None = None) -> None
         print("No matching user found.")
         return
     print(f"Deleted user {user.id}: {user.username} <{user.email}>")
+
+def hash_password_cli(password: str) -> None:
+    hashed = hash_password(password)
+    print(hashed)
 
 
 def show_users() -> None:
@@ -119,8 +121,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     remove_parser = user_subcommands.add_parser("remove", help="Remove a user")
     identity_group = remove_parser.add_mutually_exclusive_group(required=True)
-    identity_group.add_argument("--username", help="Username of the user to remove")
+    identity_group.add_argument("-username", help="Username of the user to remove")
     identity_group.add_argument("--id", type=int, help="Numeric id of the user to remove")
+    hash_parser = subcommands.add_parser("hash", help="Hash a password")
+    hash_parser.add_argument("--password", required=True, help="Password to hash")
     return parser
 
 
@@ -134,6 +138,8 @@ def main() -> None:
         downgrade(args.revision)
     elif args.command == "serve":
         serve()
+    elif args.command == "hash":
+        hash_password_cli(args.password)
     elif args.command == "users":
         if args.user_command == "list":
             show_users()
@@ -143,6 +149,8 @@ def main() -> None:
             add_user(args.username, args.email, args.password or "", args.password_hash)
         elif args.user_command == "remove":
             remove_user(user_id=args.id, username=args.username)
+
+
 
 
 if __name__ == "__main__":
