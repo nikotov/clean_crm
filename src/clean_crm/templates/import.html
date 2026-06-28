@@ -5,10 +5,7 @@
     <div>
       <div class="eyebrow">Import contacts</div>
       <h1>CSV import</h1>
-      <p class="lede">
-        Download the template, upload your CSV, review the preview, then choose tags to apply
-        before confirming the import.
-      </p>
+      <p class="lede">Download the sample file, upload your CSV, review the rows, and confirm when everything looks right.</p>
     </div>
     <div class="badge">{{ tags | length }} available tags</div>
   </section>
@@ -18,7 +15,7 @@
       <div class="panel-header">
         <div>
           <h2>Step 1: upload CSV</h2>
-          <p>Use the provided template so the import can map the columns correctly.</p>
+          <p>Use the sample file so the app can read your columns correctly.</p>
         </div>
         <a class="button secondary" href="{{ template_download_url }}">Download template</a>
       </div>
@@ -36,7 +33,7 @@
       <div class="panel-header">
         <div>
           <h2>Template columns</h2>
-          <p>The CSV should use these columns.</p>
+          <p>These are the columns we expect in the CSV.</p>
         </div>
       </div>
       <div class="tag-list">
@@ -52,7 +49,7 @@
       <div class="panel-header">
         <div>
           <h2>Step 2: preview import</h2>
-          <p>{{ preview_rows | length }} rows parsed from the uploaded file.</p>
+          <p>{{ preview_rows | length }} rows were found in the uploaded file.</p>
         </div>
       </div>
 
@@ -95,7 +92,7 @@
                 <input type="checkbox" name="tag_ids" value="{{ tag.id }}" {% if tag.id in selected_tag_ids %}checked{% endif %}>
               </label>
             {% else %}
-              <div class="empty-state">Create tags first if you want to attach them during import.</div>
+                <div class="empty-state">Create tags first if you want to attach them during import.</div>
             {% endfor %}
           </div>
         </div>

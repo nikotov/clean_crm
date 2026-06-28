@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Form, Request
 from sqlalchemy.orm import Session
 
 from ..campaigns.use_cases import (
@@ -23,7 +23,6 @@ from ..infrastructure.repositories import (
     SQLAlchemyTagMapRepository,
     SQLAlchemyTagRepository,
 )
-
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
 
@@ -67,14 +66,97 @@ def list_templates(session: Session = Depends(get_session)) -> list[dict[str, ob
     ]
 
 
-@router.post("/templates")
-async def create_template(request: Request, session: Session = Depends(get_session)) -> dict[str, object]:
-    payload = await request.json()
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Invalid template payload.")
+# Fixed route: previously had "campaigns/templates" which is incorrect
+# Also handle trailing slash to prevent 303 redirect
+# Inside your router file (campaigns/router.py)
 
-    *_, template_repository, _, _ = _repositories(session)
-    template = CreateCampaignTemplate(template_repository).execute(payload)
+@router.post("/templates")
+@router.post("/templates/")
+async def create_template(
+    # Form parameters (application/x-www-form-urlencoded)
+    name: str = Form(..., description="Internal friendly name for your reference"),
+    message_body: str = Form(..., description="Plain text body (converted to a BODY component)"),
+    ycloud_template_name: str = Form(..., description="YCloud template name (lowercase, alphanumeric, underscores)"),
+    language_code: str = Form(..., description="Language code, e.g., 'en', 'es'"),
+    category: str = Form("UTILITY", description="One of AUTHENTICATION, MARKETING, UTILITY"),
+    session: Session = Depends(get_session),
+) -> dict[str, object]:
+    """
+    Create a new WhatsApp campaign template.
+
+    The endpoint:
+    1. Validates input.
+    2. Converts the plain `message_body` into a standard WhatsApp BODY component.
+    3. Calls the YCloud API to create the template (using the waba_id from environment).
+    4. Saves the template locally via the use case.
+    5. Returns the combined local + YCloud template data.
+    """
+    # ----- 1. Input validation -----
+    if not name.strip():
+        raise HTTPException(status_code=422, detail="name cannot be empty")
+    if not message_body.strip():
+        raise HTTPException(status_code=422, detail="message_body cannot be empty")
+    if not ycloud_template_name.strip():
+        raise HTTPException(status_code=422, detail="ycloud_template_name cannot be empty")
+    if not language_code.strip():
+        raise HTTPException(status_code=422, detail="language_code cannot be empty")
+    if category.strip() not in {"AUTHENTICATION", "MARKETING", "UTILITY"}:
+        raise HTTPException(
+            status_code=422,
+            detail="category must be one of: AUTHENTICATION, MARKETING, UTILITY"
+        )
+
+    # ----- 2. Build the components list -----
+    # For a simple text template, we only have a BODY component.
+    # If you need headers/footers/buttons, extend this list.
+    components = [
+        {
+            "type": "BODY",
+            "text": message_body.strip(),
+        }
+    ]
+
+    # ----- 3. Call YCloud API to create the template -----
+    try:
+        ycloud_client = YCloudWhatsAppClient()  # Reads YCLOUD_API_KEY and YCLOUD_WABA_ID from env
+        ycloud_response = ycloud_client.create_template(
+            name=ycloud_template_name.strip(),
+            language_code=language_code.strip(),
+            category=category.strip(),
+            components=components,
+            # waba_id is automatically taken from the client (env)
+        )
+    except YCloudConfigurationError as e:
+        raise HTTPException(status_code=500, detail=f"YCloud configuration error: {e}")
+    except YCloudApiError as e:
+        # Log the error details for debugging
+        raise HTTPException(status_code=502, detail=f"YCloud API error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error calling YCloud: {e}")
+
+    # ----- 4. Save the template locally via the use case -----
+    # Build the payload expected by CreateCampaignTemplate.execute()
+    # We'll merge the YCloud response data with our input.
+    local_payload = {
+        "name": name.strip(),                           # internal name
+        "ycloud_template_name": ycloud_template_name.strip(),
+        "language_code": language_code.strip(),
+        "category": category.strip(),
+        "components": components,
+        # Additional fields from YCloud response can be stored if needed
+        "ycloud_template_id": ycloud_response.get("officialTemplateId"),
+        "ycloud_status": ycloud_response.get("status"),
+    }
+
+    template_repository = SQLAlchemyCampaignTemplateRepository(session)
+    try:
+        template = CreateCampaignTemplate(template_repository).execute(local_payload)
+    except Exception as e:
+        # If local save fails, we might want to rollback? But YCloud template is already created.
+        # We'll raise an error, but note the YCloud template may exist orphaned.
+        raise HTTPException(status_code=500, detail=f"Failed to save template locally: {e}")
+
+    # ----- 5. Return response (merge local and YCloud data) -----
     return {
         "id": template.id,
         "name": template.name,
@@ -84,8 +166,10 @@ async def create_template(request: Request, session: Session = Depends(get_sessi
         "status": template.status.value,
         "components": template.components,
         "created_at": template.created_at,
+        # Include YCloud info for transparency
+        "ycloud_official_id": ycloud_response.get("officialTemplateId"),
+        "ycloud_status": ycloud_response.get("status"),
     }
-
 
 @router.post("/templates/{template_id}/sync")
 def sync_template_status(template_id: int, session: Session = Depends(get_session)) -> dict[str, object]:
@@ -177,7 +261,9 @@ def list_campaigns(session: Session = Depends(get_session)) -> list[dict[str, ob
 
 @router.post("/{campaign_id}/launch")
 def launch_campaign(campaign_id: int, session: Session = Depends(get_session)) -> dict[str, object]:
-    customer_repository, tag_repository, tag_map_repository, template_repository, campaign_repository, recipient_repository = _repositories(session)
+    customer_repository, tag_repository, tag_map_repository, template_repository, campaign_repository, recipient_repository = _repositories(
+        session
+    )
     ycloud_client = YCloudWhatsAppClient()
     result = LaunchCampaign(
         campaign_repository=campaign_repository,

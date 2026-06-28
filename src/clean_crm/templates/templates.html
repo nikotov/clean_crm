@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="hero">
+    <div>
+      <div class="eyebrow" data-i18n="templates.eyebrow">Templates</div>
+      <h1 data-i18n="templates.title">Write the message, not the JSON.</h1>
+      <p class="lede" data-i18n="templates.lede">
+        Create WhatsApp templates in plain language. The app will build the structure YCloud needs behind the scenes.
+      </p>
+    </div>
+    <div class="badge">{{ approved_template_count }} <span data-i18n="templates.badge.approved">approved</span> · {{ template_count }} <span data-i18n="templates.badge.total">total</span></div>
+  </section>
+
+  <section class="metric-grid">
+    <article class="metric">
+      <div class="label" data-i18n="templates.metric.total">Templates</div>
+      <div class="value">{{ template_count }}</div>
+    </article>
+    <article class="metric">
+      <div class="label" data-i18n="templates.metric.approved">Approved</div>
+      <div class="value">{{ approved_template_count }}</div>
+    </article>
+    <article class="metric">
+      <div class="label" data-i18n="templates.metric.pending">Waiting review</div>
+      <div class="value">{{ pending_template_count }}</div>
+    </article>
+  </section>
+
+  <section class="campaign-grid" style="margin-top: 20px;">
+    <article class="panel wide">
+      <div class="panel-header">
+        <div>
+          <h2 data-i18n="templates.form.title">Create a template</h2>
+          <p data-i18n="templates.form.lede">Type the message normally. The app will create the component structure for you.</p>
+        </div>
+      </div>
+
+      <form class="form" method="post" action="/campaigns/workspace/templates">
+        <div class="field">
+          <label for="template-name" data-i18n="templates.form.name">Template name</label>
+          <input id="template-name" name="name" type="text" placeholder="order_update" data-i18n-placeholder="templates.form.name_placeholder" required>
+        </div>
+        <div class="field">
+          <label for="template-message" data-i18n="templates.form.message">Message</label>
+          <textarea id="template-message" name="message_body" placeholder="{% raw %}Hi {{1}}, your order is ready for pickup. Reply if you need anything.{% endraw %}" data-i18n-placeholder="templates.form.message_placeholder" required></textarea>
+          <div class="field-help" data-i18n="templates.form.message_help">Use plain language. The app will turn this into the component structure automatically.</div>
+        </div>
+        <div class="field">
+          <label for="template-ycloud-name" data-i18n="templates.form.remote_name">YCloud name</label>
+          <input id="template-ycloud-name" name="ycloud_template_name" type="text" placeholder="Leave blank to use the template name" data-i18n-placeholder="templates.form.remote_name_placeholder">
+        </div>
+        <div class="field">
+          <label for="template-language" data-i18n="templates.form.language">Language</label>
+          <select id="template-language" name="language_code" required>
+            <option value="en_US" selected>English</option>
+            <option value="es_ES">Español</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="template-category" data-i18n="templates.form.category">Category</label>
+          <select id="template-category" name="category">
+            <option value="UTILITY" selected>Utility</option>
+            <option value="MARKETING">Marketing</option>
+          </select>
+        </div>
+        <button class="button" type="submit" data-i18n="templates.form.button">Save template</button>
+      </form>
+    </article>
+
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 data-i18n="templates.tips.title">Template tips</h2>
+          <p data-i18n="templates.tips.lede">Keep it short, clear, and useful.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="empty-state" data-i18n="templates.tips.one">Start with a simple greeting, one useful message, and a clear next step.</div>
+        <div class="empty-state" data-i18n="templates.tips.two">If you need variables, use placeholders for the personal details.</div>
+        <div class="empty-state" data-i18n="templates.tips.three">Once a template is approved, you can use it in a campaign right away.</div>
+      </div>
+    </article>
+  </section>
+
+  <section class="campaign-grid" style="margin-top: 20px;">
+    <article class="panel wide">
+      <div class="panel-header">
+        <div>
+          <h2 data-i18n="templates.list.title">Saved templates</h2>
+          <p data-i18n="templates.list.lede">Review the current status and sync the ones that are ready.</p>
+        </div>
+      </div>
+
+      <div class="mini-list">
+        {% for row in templates %}
+          {% set template = row.template %}
+          <div class="mini-list-item">
+            <div>
+              <strong>{{ template.name }}</strong>
+              <p>
+                {{ template.language_code }} · {{ template.category }}
+                {% if template.approval_note %} · {{ template.approval_note }}{% endif %}
+              </p>
+            </div>
+            <div class="inline-actions" style="align-items: center;">
+              <span class="status-chip {{ row.status_class }}">{{ row.status_label }}</span>
+              <form method="post" action="/campaigns/workspace/templates/{{ template.id }}/sync">
+                <button class="button secondary small" type="submit" data-i18n="templates.list.sync">Sync status</button>
+              </form>
+            </div>
+          </div>
+        {% else %}
+          <div class="empty-state" data-i18n="templates.list.empty">No templates yet. Create the first one to start a campaign.</div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+{% endblock %}

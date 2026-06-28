@@ -5,10 +5,7 @@
     <div>
       <div class="eyebrow">Customer index</div>
       <h1>Contacts</h1>
-      <p class="lede">
-        Search, select, and batch manage customers from one table. Tags can be edited inline,
-        deleted, and applied to one or many customers.
-      </p>
+      <p class="lede">Search people, update their details, and keep everyone organized with tags.</p>
     </div>
     <div class="badge">{{ search_results_count }} shown · {{ total_customers_count }} total</div>
   </section>
@@ -114,7 +111,7 @@
       <div class="panel-header">
         <div>
           <h2>Create customer</h2>
-          <p>Save a customer into PostgreSQL.</p>
+          <p>Add someone to your customer list.</p>
         </div>
       </div>
       <form class="form" method="post" action="/contacts">
@@ -145,7 +142,7 @@
         <div class="panel-header">
           <div>
             <h2>Tag editor</h2>
-            <p>Create, rename, and delete tags.</p>
+            <p>Create, rename, and delete tags to keep your list organized.</p>
           </div>
         </div>
         <form class="form" method="post" action="/tags">
@@ -184,7 +181,7 @@
       <div class="panel-header">
         <div>
           <h2>Batch edit customers</h2>
-          <p>Update shared fields for the selected rows.</p>
+          <p>Update shared details for the selected people.</p>
         </div>
       </div>
       <form class="form" method="post" action="/contacts/batch-edit" data-selection-form>
@@ -209,7 +206,7 @@
       <div class="panel-header">
         <div>
           <h2>Batch assign tag</h2>
-          <p>Assign one tag to all selected customers.</p>
+          <p>Apply one tag to everyone you selected.</p>
         </div>
       </div>
       <form class="form" method="post" action="/contacts/batch-assign-tag" data-selection-form>
@@ -232,7 +229,7 @@
     <div class="panel-header">
       <div>
         <h2>Batch apply tags</h2>
-        <p>Apply several tags to the selected customers at once.</p>
+        <p>Apply several tags to the selected people at once.</p>
       </div>
     </div>
     <form class="form" method="post" action="/contacts/batch-edit-tags" data-selection-form>

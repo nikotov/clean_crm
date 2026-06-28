@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-language="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,10 +7,13 @@
     <script>
       (function () {
         const storedTheme = localStorage.getItem("clean-crm-theme");
+        const storedLanguage = localStorage.getItem("clean-crm-language") || "en";
         const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
         const theme = storedTheme || (prefersDark ? "dark" : "light");
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
+        document.documentElement.dataset.language = storedLanguage;
+        document.documentElement.lang = storedLanguage === "es" ? "es" : "en";
       })();
     </script>
     <style>
@@ -138,6 +141,38 @@
       .theme-toggle:hover {
         transform: translateY(-1px);
         border-color: color-mix(in srgb, var(--accent-purple) 40%, var(--border));
+      }
+
+      .language-toggle {
+        width: 100%;
+        margin-top: 12px;
+        padding: 0;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: var(--toggle-track);
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        overflow: hidden;
+        cursor: pointer;
+      }
+
+      .language-toggle span {
+        padding: 10px 12px;
+        font-size: 0.8rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .language-toggle [data-language-option="en"] {
+        border-right: 1px solid var(--border);
+      }
+
+      .language-toggle.is-es [data-language-option="es"],
+      .language-toggle:not(.is-es) [data-language-option="en"] {
+        background: color-mix(in srgb, var(--panel-strong) 86%, transparent);
+        color: var(--text);
       }
 
       .theme-toggle::before {
@@ -731,16 +766,21 @@
     <div class="shell">
       <aside class="sidebar">
         <div class="brand">Clean CRM</div>
-        <div class="tagline">A small CRM foundation with clear module boundaries and a server-rendered interface.</div>
+        <div class="tagline" data-i18n="sidebar.tagline">A simple CRM for managing contacts, campaigns, and WhatsApp templates.</div>
         <nav class="nav">
-          <a class="{% if active_page == 'home' %}active{% endif %}" href="/">Dashboard</a>
-          <a class="{% if active_page == 'contacts' %}active{% endif %}" href="/contacts">Contacts</a>
-          <a class="{% if active_page == 'campaigns' %}active{% endif %}" href="/campaigns/workspace">Campaigns</a>
+          <a class="{% if active_page == 'home' %}active{% endif %}" href="/" data-i18n="nav.dashboard">Dashboard</a>
+          <a class="{% if active_page == 'contacts' %}active{% endif %}" href="/contacts" data-i18n="nav.contacts">Contacts</a>
+          <a class="{% if active_page == 'campaigns' %}active{% endif %}" href="/campaigns/workspace" data-i18n="nav.campaigns">Campaigns</a>
+          <a class="{% if active_page == 'templates' %}active{% endif %}" href="/campaigns/workspace/templates" data-i18n="nav.templates">Templates</a>
         </nav>
-        <a class="button secondary" href="/logout" style="display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px;">Logout</a>
+        <a class="button secondary" href="/logout" style="display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px;" data-i18n="nav.logout">Log out</a>
         <button class="theme-toggle" type="button" id="theme-toggle" aria-pressed="false" aria-label="Toggle dark mode">
           <span aria-hidden="true" style="position:absolute;left:7px;top:7px;font-size:10px;line-height:1;color:var(--accent)">◐</span>
           <span aria-hidden="true" style="position:absolute;right:7px;top:7px;font-size:10px;line-height:1;color:var(--accent-purple)">◑</span>
+        </button>
+        <button class="language-toggle" type="button" id="language-toggle" aria-pressed="false" aria-label="Switch language">
+          <span data-language-option="en">EN</span>
+          <span data-language-option="es">ES</span>
         </button>
       </aside>
       <main class="main">
@@ -750,6 +790,201 @@
     <script>
       (function () {
         const button = document.getElementById("theme-toggle");
+        const languageButton = document.getElementById("language-toggle");
+
+        const translations = {
+          es: {
+            "sidebar.tagline": "Un CRM sencillo para gestionar contactos, campañas y plantillas de WhatsApp.",
+            "nav.dashboard": "Panel",
+            "nav.contacts": "Contactos",
+            "nav.campaigns": "Campañas",
+            "nav.templates": "Plantillas",
+            "nav.logout": "Cerrar sesión",
+            "common.enabled": "Incluir",
+            "home.eyebrow": "Panel en vivo",
+            "home.title": "Mantén tu espacio de clientes en un solo lugar.",
+            "home.lede": "Consulta de un vistazo tus últimos contactos, etiquetas y actividad.",
+            "home.contacts.label": "Contactos",
+            "home.tags.label": "Etiquetas",
+            "home.assignments.label": "Asignaciones",
+            "home.recent_contacts.title": "Contactos recientes",
+            "home.recent_contacts.lede": "Los registros más recientes de tu lista.",
+            "home.manage_contacts": "Gestionar contactos",
+            "home.no_contacts": "Todavía no hay contactos. Añade el primero desde la página de contactos.",
+            "home.recent_tags.title": "Etiquetas recientes",
+            "home.recent_tags.lede": "Etiquetas disponibles para asignar a clientes.",
+            "home.no_tags": "Todavía no hay etiquetas.",
+            "contacts.eyebrow": "Índice de clientes",
+            "contacts.title": "Contactos",
+            "contacts.lede": "Busca personas, actualiza sus datos y mantén todo organizado con etiquetas.",
+            "contacts.showing": "Mostrando",
+            "contacts.total": "en total",
+            "contacts.customer_index": "Índice de clientes",
+            "contacts.customer_index.lede": "Selecciona personas individuales o usa seleccionar todo para acciones masivas.",
+            "contacts.rows": "filas",
+            "contacts.search.label": "Buscar contactos",
+            "contacts.search.placeholder": "Buscar por nombre, correo, ciudad o teléfono",
+            "contacts.search.clear": "Limpiar",
+            "contacts.import": "Importar CSV",
+            "contacts.select_all": "Seleccionar todo",
+            "contacts.selected": "seleccionados",
+            "contacts.col.name": "Nombre",
+            "contacts.col.email": "Correo",
+            "contacts.col.cellphone": "Teléfono",
+            "contacts.col.city": "Ciudad",
+            "contacts.col.tags": "Etiquetas",
+            "contacts.col.actions": "Acciones",
+            "contacts.no_tags": "Sin etiquetas asignadas",
+            "contacts.delete": "Eliminar",
+            "contacts.empty": "Todavía no hay contactos. Añade el primero usando el formulario de la derecha.",
+            "contacts.form.title": "Crear contacto",
+            "contacts.form.lede": "Añade una persona a tu lista de clientes.",
+            "contacts.form.name": "Nombre",
+            "contacts.form.email": "Correo",
+            "contacts.form.cellphone": "Teléfono",
+            "contacts.form.cellphone_placeholder": "Teléfono opcional",
+            "contacts.form.city": "Ciudad",
+            "contacts.form.birthdate": "Fecha de nacimiento",
+            "contacts.form.button": "Añadir contacto",
+            "contacts.tags.title": "Editor de etiquetas",
+            "contacts.tags.lede": "Crea, renombra y elimina etiquetas para mantener la lista organizada.",
+            "contacts.tags.new": "Nueva etiqueta",
+            "contacts.tags.button": "Añadir etiqueta",
+            "contacts.tags.empty": "Todavía no se han creado etiquetas.",
+            "contacts.batch.edit.title": "Editar en lote",
+            "contacts.batch.edit.lede": "Actualiza datos compartidos para las personas seleccionadas.",
+            "contacts.batch.edit.button": "Aplicar cambios",
+            "contacts.batch.assign.title": "Asignar etiqueta en lote",
+            "contacts.batch.assign.lede": "Aplica una etiqueta a todas las personas seleccionadas.",
+            "contacts.batch.assign.button": "Asignar etiqueta",
+            "contacts.batch.tags.title": "Aplicar varias etiquetas",
+            "contacts.batch.tags.lede": "Añade varias etiquetas a las personas seleccionadas a la vez.",
+            "contacts.batch.tags.button": "Aplicar etiquetas",
+            "import.eyebrow": "Importar contactos",
+            "import.title": "Importación CSV",
+            "import.lede": "Descarga el archivo de ejemplo, sube tu CSV, revisa las filas y confirma cuando todo esté bien.",
+            "import.available_tags": "etiquetas disponibles",
+            "import.step1.title": "Paso 1: subir CSV",
+            "import.step1.lede": "Usa el archivo de ejemplo para que la app lea tus columnas correctamente.",
+            "import.download": "Descargar plantilla",
+            "import.csv.label": "Archivo CSV",
+            "import.preview.button": "Previsualizar importación",
+            "import.columns.title": "Columnas de ejemplo",
+            "import.columns.lede": "Estas son las columnas que esperamos en el CSV.",
+            "import.step2.title": "Paso 2: vista previa",
+            "import.step2.lede": "Se encontraron {{count}} filas en el archivo subido.",
+            "import.tags.title": "Etiquetas para importar",
+            "import.tags.lede": "Si quieres, añade etiquetas a las personas importadas.",
+            "import.confirm": "Confirmar importación",
+            "import.tags.empty": "Crea etiquetas primero si quieres agregarlas durante la importación.",
+            "login.title": "Inicia sesión en tu espacio.",
+            "login.lede": "Usa tu cuenta para abrir el CRM y gestionar contactos, campañas y plantillas.",
+            "login.user": "Usuario",
+            "login.password": "Contraseña",
+            "login.button": "Entrar",
+            "login.help": "Acceso protegido con sesión segura.",
+            "campaigns.eyebrow": "Campañas",
+            "campaigns.title": "Planifica y envía campañas de WhatsApp desde un solo lugar.",
+            "campaigns.lede": "Elige la audiencia, selecciona una plantilla lista para enviar y lanza la campaña cuando todo esté listo.",
+            "campaigns.badge.ready": "plantillas listas",
+            "campaigns.badge.preview": "personas en vista previa",
+            "campaigns.metric.templates": "Plantillas listas",
+            "campaigns.metric.approved": "Aprobadas",
+            "campaigns.metric.campaigns": "Campañas",
+            "campaigns.preview.title": "Vista previa de audiencia",
+            "campaigns.preview.lede": "Comprueba quién recibirá la campaña antes de guardarla.",
+            "campaigns.preview.matched": "coinciden",
+            "campaigns.preview.tags": "Etiquetas",
+            "campaigns.preview.tags_empty": "Crea etiquetas primero para usar la segmentación.",
+            "campaigns.preview.birthday": "Cumpleaños hoy",
+            "campaigns.preview.include": "Incluir",
+            "campaigns.preview.city": "Ciudad",
+            "campaigns.preview.city_placeholder": "Ciudad opcional",
+            "campaigns.preview.count": "Vista previa",
+            "campaigns.preview.button": "Actualizar vista previa",
+            "campaigns.preview.eligible": "Elegible",
+            "campaigns.preview.empty": "Todavía no hay personas que coincidan con estos filtros.",
+            "campaigns.create.title": "Crear campaña",
+            "campaigns.create.lede": "Dale un nombre claro, elige una plantilla y guárdala para lanzarla después.",
+            "campaigns.create.name": "Nombre de la campaña",
+            "campaigns.create.template": "Plantilla",
+            "campaigns.create.template_placeholder": "Selecciona una plantilla",
+            "campaigns.create.template_help": "Gestiona tus plantillas en la pestaña Plantillas.",
+            "campaigns.create.sender": "Número de envío",
+            "campaigns.create.sender_placeholder": "+16505551234",
+            "campaigns.create.audience": "Resumen de audiencia",
+            "campaigns.create.audience_help": "Esto guarda la audiencia que aparece en la vista previa de arriba.",
+            "campaigns.create.button": "Guardar campaña",
+            "campaigns.list.title": "Lista de campañas",
+            "campaigns.list.lede": "Revisa lo guardado y lanza las campañas que ya estén listas.",
+            "campaigns.list.template": "Plantilla",
+            "campaigns.list.recipients": "destinatarios listos",
+            "campaigns.list.launch": "Lanzar",
+            "campaigns.list.sender": "Envío",
+            "campaigns.list.schedule": "Programada",
+            "campaigns.list.audience": "Audiencia",
+            "campaigns.list.tags": "etiquetas",
+            "campaigns.list.birthday": "cumpleaños hoy",
+            "campaigns.list.recipient_states": "Entrega",
+            "campaigns.list.accepted": "aceptado",
+            "campaigns.list.failed": "fallido",
+            "campaigns.list.delivered": "entregado",
+            "campaigns.list.read": "leído",
+            "campaigns.list.empty": "Todavía no hay campañas. Crea una cuando ya tengas plantilla y audiencia.",
+            "templates.eyebrow": "Plantillas",
+            "templates.title": "Escribe el mensaje, no el JSON.",
+            "templates.lede": "Crea plantillas de WhatsApp con lenguaje normal. La app construirá la estructura que necesita YCloud por detrás.",
+            "templates.badge.approved": "aprobadas",
+            "templates.badge.total": "total",
+            "templates.metric.total": "Plantillas",
+            "templates.metric.approved": "Aprobadas",
+            "templates.metric.pending": "En revisión",
+            "templates.form.title": "Crear una plantilla",
+            "templates.form.lede": "Escribe el mensaje normalmente. La app creará la estructura automáticamente.",
+            "templates.form.name": "Nombre de la plantilla",
+            "templates.form.name_placeholder": "order_update",
+            "templates.form.message": "Mensaje",
+            "templates.form.message_placeholder": "Hi {{1}}, your order is ready for pickup. Reply if you need anything.",
+            "templates.form.message_help": "Usa lenguaje sencillo. La app lo convertirá en la estructura de componentes automáticamente.",
+            "templates.form.remote_name": "Nombre en YCloud",
+            "templates.form.remote_name_placeholder": "Déjalo en blanco para reutilizar el nombre de la plantilla",
+            "templates.form.language": "Idioma",
+            "templates.form.category": "Categoría",
+            "templates.form.button": "Guardar plantilla",
+            "templates.tips.title": "Consejos para plantillas",
+            "templates.tips.lede": "Sé breve, claro y útil.",
+            "templates.tips.one": "Empieza con un saludo simple, un mensaje útil y un siguiente paso claro.",
+            "templates.tips.two": "Si necesitas variables, usa marcadores para los datos personales.",
+            "templates.tips.three": "Cuando una plantilla esté aprobada, podrás usarla enseguida en una campaña.",
+            "templates.list.title": "Plantillas guardadas",
+            "templates.list.lede": "Revisa el estado actual y sincroniza las que ya estén listas.",
+            "templates.list.sync": "Sincronizar estado",
+            "templates.list.empty": "Todavía no hay plantillas. Crea la primera para empezar a enviar mensajes.",
+          },
+        };
+
+        function syncLanguage(language) {
+          const nextLanguage = language === "es" ? "es" : "en";
+          document.documentElement.dataset.language = nextLanguage;
+          document.documentElement.lang = nextLanguage;
+          localStorage.setItem("clean-crm-language", nextLanguage);
+
+          document.querySelectorAll("[data-i18n]").forEach(function (node) {
+            const key = node.getAttribute("data-i18n");
+            const translation = translations[nextLanguage] && translations[nextLanguage][key];
+            if (translation) {
+              node.textContent = translation;
+            } else if (node.dataset.i18nDefault) {
+              node.textContent = node.dataset.i18nDefault;
+            }
+          });
+
+          if (languageButton) {
+            languageButton.setAttribute("aria-pressed", nextLanguage === "es" ? "true" : "false");
+            languageButton.setAttribute("aria-label", nextLanguage === "es" ? "Cambiar a inglés" : "Switch to Spanish");
+            languageButton.classList.toggle("is-es", nextLanguage === "es");
+          }
+        }
 
         function syncButton(theme) {
           button.setAttribute("aria-pressed", theme === "dark" ? "true" : "false");
@@ -757,6 +992,7 @@
         }
 
         syncButton(document.documentElement.dataset.theme || "light");
+        syncLanguage(document.documentElement.dataset.language || "en");
 
         button.addEventListener("click", function () {
           const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
@@ -765,6 +1001,13 @@
           localStorage.setItem("clean-crm-theme", nextTheme);
           syncButton(nextTheme);
         });
+
+        if (languageButton) {
+          languageButton.addEventListener("click", function () {
+            const nextLanguage = document.documentElement.dataset.language === "es" ? "en" : "es";
+            syncLanguage(nextLanguage);
+          });
+        }
       })();
     </script>
   </body>

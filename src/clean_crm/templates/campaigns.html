@@ -3,27 +3,26 @@
 {% block content %}
   <section class="hero">
     <div>
-      <div class="eyebrow">WhatsApp campaigns</div>
-      <h1>Approve one template and launch simple outbound campaigns.</h1>
-      <p class="lede">
-        Keep the workflow small: create a template, sync approval status with YCloud, choose a target
-        audience from CRM tags or basic rules, and launch the campaign.
+      <div class="eyebrow" data-i18n="campaigns.eyebrow">Campaigns</div>
+      <h1 data-i18n="campaigns.title">Plan and send WhatsApp campaigns from one place.</h1>
+      <p class="lede" data-i18n="campaigns.lede">
+        Pick the audience, choose a ready-to-send template, and launch when the message and timing look right.
       </p>
     </div>
-    <div class="badge">{{ approved_template_count }} approved · {{ preview_count }} in audience</div>
+    <div class="badge">{{ approved_template_count }} <span data-i18n="campaigns.badge.ready">ready templates</span> · {{ preview_count }} <span data-i18n="campaigns.badge.preview">people in preview</span></div>
   </section>
 
   <section class="metric-grid">
     <article class="metric">
-      <div class="label">Templates</div>
+      <div class="label" data-i18n="campaigns.metric.templates">Templates ready</div>
       <div class="value">{{ template_count }}</div>
     </article>
     <article class="metric">
-      <div class="label">Approved</div>
+      <div class="label" data-i18n="campaigns.metric.approved">Approved</div>
       <div class="value">{{ approved_template_count }}</div>
     </article>
     <article class="metric">
-      <div class="label">Campaigns</div>
+      <div class="label" data-i18n="campaigns.metric.campaigns">Campaigns</div>
       <div class="value">{{ campaign_count }}</div>
     </article>
   </section>
@@ -32,15 +31,15 @@
     <article class="panel wide">
       <div class="panel-header">
         <div>
-          <h2>Audience preview</h2>
-          <p>Use CRM tags plus a small set of rules to estimate the recipients before you create a campaign.</p>
+          <h2 data-i18n="campaigns.preview.title">Audience preview</h2>
+          <p data-i18n="campaigns.preview.lede">Check who will receive the campaign before you save it.</p>
         </div>
-        <span class="status-chip approved">{{ preview_count }} matched</span>
+        <span class="status-chip approved">{{ preview_count }} <span data-i18n="campaigns.preview.matched">matched</span></span>
       </div>
 
       <form class="form" method="get" action="/campaigns/workspace">
         <div class="field">
-          <label>Tags</label>
+          <label data-i18n="campaigns.preview.tags">Tags</label>
           <div class="checklist">
             {% for tag in tags %}
               <label class="check-option">
@@ -48,34 +47,34 @@
                 <input type="checkbox" name="tag_ids" value="{{ tag.id }}" {% if tag.id in preview_filters.tag_ids %}checked{% endif %}>
               </label>
             {% else %}
-              <div class="empty-state">Create tags first to use tag-based segmentation.</div>
+              <div class="empty-state" data-i18n="campaigns.preview.tags_empty">Create tags first to use tag-based segmentation.</div>
             {% endfor %}
           </div>
         </div>
 
         <div class="campaign-audience-summary">
           <div class="summary-tile">
-            <div class="label">Birthday today</div>
+            <div class="label" data-i18n="campaigns.preview.birthday">Birthday today</div>
             <div class="value">
               <label class="selection-row" style="margin-top: 8px;">
                 <input type="checkbox" name="birthday_today" value="true" {% if preview_filters.birthday_today %}checked{% endif %}>
-                <span>Enabled</span>
+                <span data-i18n="campaigns.preview.include">Include</span>
               </label>
             </div>
           </div>
           <div class="summary-tile">
-            <div class="label">City</div>
+            <div class="label" data-i18n="campaigns.preview.city">City</div>
             <div class="value" style="font-size: 1rem; font-weight: 700; margin-top: 8px;">
-              <input type="text" name="city" value="{{ preview_filters.city or '' }}" placeholder="Optional city" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel-strong) 88%, transparent); color: var(--text);">
+              <input type="text" name="city" value="{{ preview_filters.city or '' }}" placeholder="Optional city" data-i18n-placeholder="campaigns.preview.city_placeholder" style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel-strong) 88%, transparent); color: var(--text);">
             </div>
           </div>
           <div class="summary-tile">
-            <div class="label">Preview</div>
+            <div class="label" data-i18n="campaigns.preview.count">Preview</div>
             <div class="value">{{ preview_count }}</div>
           </div>
         </div>
 
-        <button class="button" type="submit">Preview audience</button>
+        <button class="button" type="submit" data-i18n="campaigns.preview.button">Refresh preview</button>
       </form>
 
       <div class="mini-list" style="margin-top: 18px;">
@@ -83,12 +82,12 @@
           <div class="mini-list-item">
             <div>
               <strong>{{ recipient.name }}</strong>
-              <p>{{ recipient.email }} · {{ recipient.cellphone or 'No phone' }}</p>
+              <p>{{ recipient.email }} · {{ recipient.cellphone or 'No phone number' }}</p>
             </div>
-            <span class="status-chip accepted">Eligible</span>
+            <span class="status-chip accepted" data-i18n="campaigns.preview.eligible">Eligible</span>
           </div>
         {% else %}
-          <div class="empty-state">No recipients match the current filters.</div>
+          <div class="empty-state" data-i18n="campaigns.preview.empty">No people match the current filters yet.</div>
         {% endfor %}
       </div>
     </article>
@@ -96,36 +95,37 @@
     <article class="panel">
       <div class="panel-header">
         <div>
-          <h2>Create campaign</h2>
-          <p>Lock the audience rules first, then pick one approved template and send from a business number.</p>
+          <h2 data-i18n="campaigns.create.title">Create campaign</h2>
+          <p data-i18n="campaigns.create.lede">Choose a ready template, give the campaign a clear name, and save it for launch.</p>
         </div>
       </div>
 
       <form class="form" method="post" action="/campaigns/workspace/campaigns">
         <div class="field">
-          <label for="campaign-name">Campaign name</label>
+          <label for="campaign-name" data-i18n="campaigns.create.name">Campaign name</label>
           <input id="campaign-name" name="name" type="text" required>
         </div>
         <div class="field">
-          <label for="campaign-template">Template</label>
+          <label for="campaign-template" data-i18n="campaigns.create.template">Template</label>
           <select id="campaign-template" name="template_id" required>
-            <option value="" selected disabled>Select a template</option>
+            <option value="" selected disabled data-i18n="campaigns.create.template_placeholder">Select a template</option>
             {% for row in templates %}
               {% set template = row.template %}
               <option value="{{ template.id }}">{{ template.name }} · {{ template.language_code }} · {{ row.status_label }}</option>
             {% endfor %}
           </select>
+          <div class="field-help" data-i18n="campaigns.create.template_help">Manage your message templates in the Templates tab.</div>
         </div>
         <div class="field">
-          <label for="campaign-sender">Sender phone number</label>
-          <input id="campaign-sender" name="sender_phone_number" type="tel" placeholder="+16505551234" required>
+          <label for="campaign-sender" data-i18n="campaigns.create.sender">Sender number</label>
+          <input id="campaign-sender" name="sender_phone_number" type="tel" placeholder="+16505551234" data-i18n-placeholder="campaigns.create.sender_placeholder" required>
         </div>
         <div class="field">
-          <label for="campaign-audience-rule">Audience rule snapshot</label>
+          <label for="campaign-audience-rule" data-i18n="campaigns.create.audience">Audience summary</label>
           <textarea id="campaign-audience-rule" name="audience_rule_json" readonly>{{ preview_filters_json }}</textarea>
-          <div class="field-help">This captures the audience currently shown in the preview above.</div>
+          <div class="field-help" data-i18n="campaigns.create.audience_help">This saves the audience currently shown in the preview above.</div>
         </div>
-        <button class="button" type="submit">Create campaign</button>
+        <button class="button" type="submit" data-i18n="campaigns.create.button">Save campaign</button>
       </form>
     </article>
   </section>
@@ -134,77 +134,8 @@
     <article class="panel wide">
       <div class="panel-header">
         <div>
-          <h2>Templates</h2>
-          <p>Create a template locally, then sync approval status from YCloud before using it in a campaign.</p>
-        </div>
-        <span class="status-chip pending_review">{{ pending_template_count }} pending</span>
-      </div>
-
-      <div class="split" style="margin-top: 0;">
-        <div class="panel" style="grid-column: span 5; padding: 18px; box-shadow: none;">
-          <form class="form" method="post" action="/campaigns/workspace/templates">
-            <div class="field">
-              <label for="template-name">Template name</label>
-              <input id="template-name" name="name" type="text" placeholder="monthly_update" required>
-            </div>
-            <div class="field">
-              <label for="template-ycloud-name">YCloud template name</label>
-              <input id="template-ycloud-name" name="ycloud_template_name" type="text" placeholder="Defaults to the template name">
-            </div>
-            <div class="field">
-              <label for="template-language">Language code</label>
-              <input id="template-language" name="language_code" type="text" value="en_US" required>
-            </div>
-            <div class="field">
-              <label for="template-category">Category</label>
-              <select id="template-category" name="category">
-                <option value="UTILITY" selected>UTILITY</option>
-                <option value="MARKETING">MARKETING</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="template-components">Components JSON</label>
-              <textarea id="template-components" name="components_json" required>[{"type":"BODY","text":"Hello {{1}}, this is a campaign message.","example":{"body_text":[["Customer"]]}}]</textarea>
-              <div class="field-help">Provide the template body/components as a JSON array. Keep it simple for MVP: one body block is usually enough.</div>
-            </div>
-            <button class="button" type="submit">Create template</button>
-          </form>
-        </div>
-
-        <div class="panel" style="grid-column: span 7; padding: 18px; box-shadow: none;">
-          <div class="mini-list">
-            {% for row in templates %}
-              {% set template = row.template %}
-              <div class="mini-list-item">
-                <div>
-                  <strong>{{ template.name }}</strong>
-                  <p>
-                    {{ template.language_code }} · {{ template.category }}
-                    {% if template.approval_note %} · {{ template.approval_note }}{% endif %}
-                  </p>
-                </div>
-                <div class="inline-actions" style="align-items: center;">
-                  <span class="status-chip {{ row.status_class }}">{{ row.status_label }}</span>
-                  <form method="post" action="/campaigns/workspace/templates/{{ template.id }}/sync">
-                    <button class="button secondary small" type="submit">Sync status</button>
-                  </form>
-                </div>
-              </div>
-            {% else %}
-              <div class="empty-state">No templates yet. Create one to start a campaign.</div>
-            {% endfor %}
-          </div>
-        </div>
-      </div>
-    </article>
-  </section>
-
-  <section class="campaign-grid" style="margin-top: 20px;">
-    <article class="panel wide">
-      <div class="panel-header">
-        <div>
-          <h2>Campaign launches</h2>
-          <p>Launch campaigns from the saved list once the template has been approved in YCloud.</p>
+          <h2 data-i18n="campaigns.list.title">Campaign list</h2>
+          <p data-i18n="campaigns.list.lede">Review what has been saved and launch the campaigns that are ready.</p>
         </div>
       </div>
 
@@ -216,28 +147,28 @@
               <div>
                 <strong>{{ campaign.name }}</strong>
                 <p>
-                  Template #{{ campaign.template_id }}
+                  <span data-i18n="campaigns.list.template">Template</span> #{{ campaign.template_id }}
                   {% if row.template %} · {{ row.template.name }}{% endif %}
-                  · {{ row.recipient_count }} queued recipients
+                  · {{ row.recipient_count }} <span data-i18n="campaigns.list.recipients">ready recipients</span>
                 </p>
               </div>
               <div class="inline-actions">
                 <span class="status-chip {{ row.status_class }}">{{ row.status_label }}</span>
                 <form method="post" action="/campaigns/workspace/campaigns/{{ campaign.id }}/launch">
-                  <button class="button secondary small" type="submit" {% if row.template and row.template.status.value != 'approved' %}disabled{% endif %}>Launch</button>
+                  <button class="button secondary small" type="submit" {% if row.template and row.template.status.value != 'approved' %}disabled{% endif %} data-i18n="campaigns.list.launch">Launch</button>
                 </form>
               </div>
             </div>
 
             <div class="campaign-row-meta">
-              <span>Sender: {{ campaign.sender_phone_number }}</span>
-              <span>Scheduled: {{ campaign.scheduled_for or 'Not scheduled' }}</span>
-              <span>Audience: {{ campaign.audience_rule.tag_ids | length }} tags{% if campaign.audience_rule.birthday_today %} · birthday today{% endif %}{% if campaign.audience_rule.city %} · {{ campaign.audience_rule.city }}{% endif %}</span>
-              <span>Recipient states: {{ row.recipient_status_counts.get('accepted', 0) }} accepted, {{ row.recipient_status_counts.get('failed', 0) }} failed, {{ row.recipient_status_counts.get('delivered', 0) }} delivered, {{ row.recipient_status_counts.get('read', 0) }} read</span>
+              <span><span data-i18n="campaigns.list.sender">Sender</span>: {{ campaign.sender_phone_number }}</span>
+              <span><span data-i18n="campaigns.list.schedule">Scheduled</span>: {{ campaign.scheduled_for or 'Not scheduled yet' }}</span>
+              <span><span data-i18n="campaigns.list.audience">Audience</span>: {{ campaign.audience_rule.tag_ids | length }} <span data-i18n="campaigns.list.tags">tags</span>{% if campaign.audience_rule.birthday_today %} · <span data-i18n="campaigns.list.birthday">birthday today</span>{% endif %}{% if campaign.audience_rule.city %} · {{ campaign.audience_rule.city }}{% endif %}</span>
+              <span><span data-i18n="campaigns.list.recipient_states">Delivery</span>: {{ row.recipient_status_counts.get('accepted', 0) }} <span data-i18n="campaigns.list.accepted">accepted</span>, {{ row.recipient_status_counts.get('failed', 0) }} <span data-i18n="campaigns.list.failed">failed</span>, {{ row.recipient_status_counts.get('delivered', 0) }} <span data-i18n="campaigns.list.delivered">delivered</span>, {{ row.recipient_status_counts.get('read', 0) }} <span data-i18n="campaigns.list.read">read</span></span>
             </div>
           </div>
         {% else %}
-          <div class="empty-state">No campaigns yet. Create one after selecting a template and audience.</div>
+          <div class="empty-state" data-i18n="campaigns.list.empty">No campaigns yet. Create one after you choose a template and audience.</div>
         {% endfor %}
       </div>
     </article>
