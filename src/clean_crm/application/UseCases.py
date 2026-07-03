@@ -353,6 +353,14 @@ class ImportCustomers:
 
         return imported_customers
 
+class CreateTemplate:
+    def __init__(self, ycloud_client):
+        self.ycloud_client = ycloud_client
+
+    def execute(self, payload: dict[str, object]) -> dict[str, object]:
+        return self.ycloud_client.create_template(payload)
+
+
 createCustomer = CreateCustomer
 updateCustomer = UpdateCustomer
 deleteCustomer = DeleteCustomer
@@ -369,3 +377,4 @@ removeTagFromCustomer = RemoveTagFromCustomer
 listTagMaps = ListTagMaps
 batchEditCustomerTags = BatchEditCustomerTags
 importCustomers = ImportCustomers
+createTemplate = CreateTemplate

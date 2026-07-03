@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
-from datetime import datetime, date
-from typing import Optional
+from datetime import date, datetime
+from typing import Mapping, Optional
 from .Enums import (
     CampaignStatus,
     CampaignTemplateStatus,
@@ -56,6 +56,39 @@ class CampaignAudienceRule:
     tag_ids: list[int] = field(default_factory=list)
     birthday_today: bool = False
     city: str | None = None
+
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, object] | None) -> "CampaignAudienceRule":
+        if not data:
+            return cls()
+
+        raw_tag_ids = data.get("tag_ids", [])
+        tag_ids: list[int] = []
+        if isinstance(raw_tag_ids, list):
+            for value in raw_tag_ids:
+                try:
+                    tag_ids.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+
+        birthday_today_value = data.get("birthday_today", False)
+        birthday_today = birthday_today_value in (True, "true", "True", 1, "1")
+
+        city_value = data.get("city")
+        city = str(city_value).strip() if city_value not in (None, "") else None
+
+        return cls(
+            tag_ids=tag_ids,
+            birthday_today=birthday_today,
+            city=city,
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        return {
+            "tag_ids": list(self.tag_ids),
+            "birthday_today": self.birthday_today,
+            "city": self.city,
+        }
 
 @dataclass
 class CampaignTemplateComponent:

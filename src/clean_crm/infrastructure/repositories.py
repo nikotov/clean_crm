@@ -1,10 +1,30 @@
+from datetime import date, datetime
+from typing import Any, cast
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..campaigns.domain import Campaign, CampaignAudienceRule, CampaignMessageStatus, CampaignRecipientResult, CampaignStatus, CampaignTemplate, CampaignTemplateStatus
-from ..campaigns.repositories import CampaignRecipientRepository, CampaignRepository, CampaignTemplateRepository
-from ..domain.Entities import Customer, Tag, TagMap, User
-from ..domain.Repositories import CustomerRepository, TagMapRepository, TagRepository, UserRepository
+from ..domain.Entities import (
+    Campaign,
+    CampaignAudienceRule,
+    CampaignRecipientResult,
+    CampaignTemplate,
+    CampaignTemplateComponent,
+    Customer,
+    Tag,
+    TagMap,
+    User,
+)
+from ..domain.Enums import CampaignMessageStatus, CampaignStatus, CampaignTemplateStatus, Category
+from ..domain.Repositories import (
+    CampaignRecipientRepository,
+    CampaignRepository,
+    CampaignTemplateRepository,
+    CustomerRepository,
+    TagMapRepository,
+    TagRepository,
+    UserRepository,
+)
 from .models import CampaignModel, CampaignRecipientModel, CampaignTemplateModel, CustomerModel, TagMapModel, TagModel, UserModel
 
 
@@ -50,19 +70,56 @@ def _user_to_domain(model: UserModel) -> User:
 
 
 def _template_to_domain(model: CampaignTemplateModel) -> CampaignTemplate:
+    components: list[CampaignTemplateComponent] = []
+    for component in model.components or []:
+        if isinstance(component, CampaignTemplateComponent):
+            components.append(component)
+            continue
+
+        if isinstance(component, dict):
+            raw_text = component.get("text")
+            components.append(
+                CampaignTemplateComponent(
+                    type=str(component.get("type", "")),
+                    text=raw_text if isinstance(raw_text, str) else None,
+                )
+            )
+
     return CampaignTemplate(
         id=model.id,
         name=model.name,
         ycloud_template_name=model.ycloud_template_name,
         language_code=model.language_code,
-        category=model.category,
+        category=Category(model.category),
         status=CampaignTemplateStatus(model.status),
-        components=list(model.components or []),
+        components=components,
         created_at=model.created_at,
         updated_at=model.updated_at,
         last_synced_at=model.last_synced_at,
         approval_note=model.approval_note,
     )
+
+
+def _template_components_to_payload(template: CampaignTemplate) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for component in template.components:
+        payload.append(
+            {
+                "type": component.type,
+                **({"text": component.text} if component.text is not None else {}),
+            }
+        )
+    return payload
+
+
+def _customer_birthdate_to_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    return value
 
 
 def _campaign_to_domain(model: CampaignModel) -> Campaign:
@@ -176,18 +233,19 @@ class SQLAlchemyCustomerRepository(CustomerRepository):
                 email=customer.email,
                 created_at=customer.created_at,
                 updated_at=customer.updated_at,
-                birthdate=customer.birthdate,
+                birthdate=_customer_birthdate_to_datetime(customer.birthdate),
                 age=customer.age,
                 city=customer.city,
                 cellphone=customer.cellphone,
             )
             self.session.add(model)
         else:
+            model_data = cast(Any, model)
             model.name = customer.name
             model.email = customer.email
             model.created_at = customer.created_at
             model.updated_at = customer.updated_at
-            model.birthdate = customer.birthdate
+            model_data.birthdate = _customer_birthdate_to_datetime(customer.birthdate)
             model.age = customer.age
             model.city = customer.city
             model.cellphone = customer.cellphone
@@ -339,9 +397,9 @@ class SQLAlchemyCampaignTemplateRepository(CampaignTemplateRepository):
                 name=template.name,
                 ycloud_template_name=template.ycloud_template_name,
                 language_code=template.language_code,
-                category=template.category,
+                category=template.category.value,
                 status=template.status.value,
-                components=template.components,
+                components=_template_components_to_payload(template),
                 created_at=template.created_at,
                 updated_at=template.updated_at,
                 last_synced_at=template.last_synced_at,
@@ -352,9 +410,9 @@ class SQLAlchemyCampaignTemplateRepository(CampaignTemplateRepository):
             model.name = template.name
             model.ycloud_template_name = template.ycloud_template_name
             model.language_code = template.language_code
-            model.category = template.category
+            model.category = template.category.value
             model.status = template.status.value
-            model.components = template.components
+            model.components = _template_components_to_payload(template)
             model.updated_at = template.updated_at
             model.last_synced_at = template.last_synced_at
             model.approval_note = template.approval_note

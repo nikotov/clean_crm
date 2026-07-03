@@ -3,15 +3,17 @@ from fastapi.responses import RedirectResponse
 from starlette.requests import Request
 
 from .infrastructure.auth import AUTH_COOKIE_NAME, decode_access_token
-from .interfaces.auth import router as auth_router
-from .interfaces.campaigns import router as campaigns_router
-from .interfaces.web import router as web_router
+from .interfaces.api import auth as auth_api
+from .interfaces.api import campaigns as campaigns_api
+from .interfaces.pages import auth as auth_pages
+from .interfaces.pages import workspace as workspace_pages
 
 
 app = FastAPI(title="Clean CRM")
-app.include_router(auth_router)
-app.include_router(web_router)
-app.include_router(campaigns_router)
+app.include_router(auth_pages.router)
+app.include_router(workspace_pages.router)
+app.include_router(auth_api.router)
+app.include_router(campaigns_api.router)
 
 
 @app.middleware("http")
