@@ -17,6 +17,7 @@ services:
       YCLOUD_WABA_ID: ${YCLOUD_WABA_ID}
       DATABASE_URL: ${DATABASE_URL}
       CRM_JWT_SECRET: ${CRM_JWT_SECRET}
+      YCLOUD_SENDER_NUMBERS: ${YCLOUD_SENDER_NUMBERS}
     depends_on:
       - db
     ports:

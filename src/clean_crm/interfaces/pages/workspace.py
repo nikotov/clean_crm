@@ -15,6 +15,9 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from ...infrastructure.ycloud import YCloudClient
+from ...infrastructure.ycloud.exceptions import YCloudApiError
+
 from ...application.UseCases import (
     BatchAssignTagToCustomers,
     BatchEditCustomerTags,
@@ -43,15 +46,10 @@ from ...domain.Entities import (
     Category,
     Customer,
     Tag,
-    TagMap,
 )
 from ...domain.Repositories import (
     CampaignRecipientRepository,
-    CampaignRepository,
     CampaignTemplateRepository,
-    CustomerRepository,
-    TagMapRepository,
-    TagRepository,
 )
 from ...infrastructure.database import get_session
 from ...infrastructure.repositories import (
@@ -62,7 +60,6 @@ from ...infrastructure.repositories import (
     SQLAlchemyTagMapRepository,
     SQLAlchemyTagRepository,
 )
-from ...infrastructure.ycloud import YCloudClient
 from ...infrastructure.ycloud.exceptions import YCloudConfigurationError
 
 router = APIRouter()
@@ -413,6 +410,150 @@ def _try_sync_template(template: CampaignTemplate) -> tuple[str, str | None]:
     return status_value, approval_note
 
 
+# ========================
+# NEW HELPER FUNCTIONS
+# ========================
+
+def _parse_scheduled_at(value: str | None) -> datetime | None:
+    """Parse an ISO format datetime string into a datetime object."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        # Optionally handle other formats, but we'll just return None
+        return None
+
+
+def _launch_campaign(
+    campaign: Campaign,
+    session: Session,
+) -> list[CampaignRecipientResult]:
+    """
+    Computes recipients, saves them, and sends the template message via YCloud.
+    """
+    customer_repository = _customer_repo(session)
+    tag_repository = _tag_repo(session)
+    tag_map_repository = _tag_map_repo(session)
+    recipient_repository = _campaign_recipient_repo(session)
+    template_repository = _campaign_template_repo(session)
+
+    # 1. Get all customers and their tags
+    customers = ListCustomers(customer_repository).execute()
+    tags = ListTags(tag_repository).execute()
+    tags_by_customer_id: dict[int, list[Tag]] = defaultdict(list)
+    for tag_map in tag_map_repository.list_tag_maps():
+        tag = next((t for t in tags if t.id == tag_map.tag_id), None)
+        if tag:
+            tags_by_customer_id[tag_map.customer_id].append(tag)
+
+    # 2. Build recipient list (matching the audience rule)
+    recipients: list[CampaignRecipientResult] = []
+    for customer in customers:
+        customer_tag_ids = {tag.id for tag in tags_by_customer_id.get(customer.id, [])}
+        if not _customer_matches_rule(customer, customer_tag_ids, campaign.audience_rule):
+            continue
+
+        has_phone = bool(customer.cellphone and customer.cellphone.strip())
+        recipients.append(
+            CampaignRecipientResult(
+                customer_id=customer.id,
+                recipient_phone=customer.cellphone or "",
+                status=CampaignMessageStatus.ACCEPTED if has_phone else CampaignMessageStatus.FAILED,
+                ycloud_message_id=None,
+                external_id=f"campaign-{campaign.id}-customer-{customer.id}",
+                failure_reason=None if has_phone else "Missing cellphone number",
+            )
+        )
+
+    # 3. Save recipients first (with initial status)
+    recipient_repository.save_recipients(campaign.id, recipients)
+    session.commit()  # persist the recipients
+
+    # 4. Fetch the template
+    template = template_repository.get_template_by_id(campaign.template_id)
+    if not template or template.status != CampaignTemplateStatus.APPROVED:
+        # Mark all as failed and return
+        for rec in recipients:
+            if rec.status == CampaignMessageStatus.ACCEPTED:
+                rec.status = CampaignMessageStatus.FAILED
+                rec.failure_reason = "Template not approved or missing"
+        recipient_repository.save_recipients(campaign.id, recipients)
+        session.commit()
+        return recipients
+
+    # 5. Get YCloud client and WABA ID
+    client = _get_ycloud_client()
+    waba_id = environ.get("YCLOUD_WABA_ID")
+    if not waba_id:
+        raise YCloudConfigurationError("YCLOUD_WABA_ID not set")
+
+    # 6. For each recipient, send the template message
+    for rec in recipients:
+        if rec.status != CampaignMessageStatus.ACCEPTED:
+            continue
+
+        phone = rec.recipient_phone
+        if not phone.startswith("+"):
+            phone = "+" + phone
+
+        payload = {
+            "from": campaign.sender_phone_number,
+            "wabaId": waba_id,
+            "to": phone,
+            "type": "template",
+            "template": {
+                "name": template.ycloud_template_name,
+                "language": {"code": template.language_code},
+                # If you have placeholders, add them here:
+                # "components": [{"type": "body", "parameters": [{"type": "text", "text": "value"}]}]
+            }
+        }
+
+# Inside the loop over recipients
+        try:
+            print(f"Sending to {phone} with payload: {payload}")
+            response = client.send_message(payload)
+            print(f"YCloud response: {response}")  # This will print the dict returned by the client
+            ycloud_id = response.get("id")
+            api_status = response.get("status", "accepted")
+            # ... update recipient as before ...
+        except YCloudApiError as e:
+            print(f"YCloudApiError for {phone}: {e}")
+            # If the client raises, e might contain response body; we can also access e.response if available
+            # But we can also print the full error
+            rec.status = CampaignMessageStatus.FAILED
+            rec.failure_reason = str(e)
+        except Exception as e:
+            print(f"Unexpected error for {phone}: {e}")
+            rec.status = CampaignMessageStatus.FAILED
+            rec.failure_reason = f"Unexpected: {str(e)}"
+
+        # Update each recipient individually (you can batch later)
+        # We'll re-save the whole list, but we need to update, not insert.
+        # Option 1: update by customer_id and campaign_id
+        # For simplicity, we'll directly update the database using SQLAlchemy.
+        # Since we have the session, we can fetch the model and update.
+        # We'll do a quick approach: get the recipient model by external_id and update.
+        from ...infrastructure.models import CampaignRecipientModel
+        db_recipient = session.query(CampaignRecipientModel).filter(
+            CampaignRecipientModel.external_id == rec.external_id
+        ).first()
+        if db_recipient:
+            db_recipient.status = rec.status.value
+            db_recipient.ycloud_message_id = rec.ycloud_message_id
+            db_recipient.failure_reason = rec.failure_reason
+            db_recipient.updated_at = datetime.utcnow()
+            session.add(db_recipient)
+
+    session.commit()
+    return recipients
+
+
+# ========================
+# ENDPOINTS
+# ========================
+
 @router.get("/contacts", response_class=HTMLResponse)
 def contacts_page(
     request: Request,
@@ -671,6 +812,10 @@ def campaigns_workspace_page(
     template_rows, template_count, approved_template_count, _ = _campaign_template_rows(template_repository.list_templates())
     campaign_rows = _campaign_rows(campaign_repository.list_campaigns(), template_repository, recipient_repository)
 
+    # Get sender numbers from environment (comma-separated)
+    sender_numbers_raw = environ.get("YCLOUD_SENDER_NUMBERS", "")
+    sender_numbers = [num.strip() for num in sender_numbers_raw.split(",") if num.strip()]
+
     return _render(
         request,
         "campaigns.html",
@@ -687,16 +832,12 @@ def campaigns_workspace_page(
                 birthday_today=birthday_today,
                 city=city,
             ),
-            "preview_filters_json": json.dumps(
-                {
-                    "tag_ids": tag_ids or [],
-                    "birthday_today": birthday_today,
-                    "city": city,
-                }
-            ),
+            # preview_filters_json is removed (no longer used)
             "template_count": template_count,
             "approved_template_count": approved_template_count,
             "campaign_count": len(campaign_rows),
+            "sender_numbers": sender_numbers,  # new context variable
+            "form_data": {},
         },
     )
 
@@ -791,10 +932,23 @@ def create_campaign(
     name: str = Form(...),
     template_id: int = Form(...),
     sender_phone_number: str = Form(...),
-    audience_rule_json: str = Form(...),
+    tag_ids: list[int] = Form(default=[]),
+    birthday_today: bool = Form(False),
+    city: str = Form(None),
+    scheduled_at: str = Form(None),
+    action: str = Form(...),  # "send" or "draft"
     session: Session = Depends(get_session),
 ):
-    audience_rule = _campaign_audience_rule_from_json(audience_rule_json)
+    # Build audience rule
+    audience_rule = CampaignAudienceRule(
+        tag_ids=tag_ids,
+        birthday_today=birthday_today,
+        city=city,
+    )
+
+    scheduled_dt = _parse_scheduled_at(scheduled_at) if scheduled_at else None
+
+    # Always save as DRAFT (for both actions)
     campaign = Campaign(
         id=0,
         name=name.strip(),
@@ -802,10 +956,15 @@ def create_campaign(
         sender_phone_number=sender_phone_number.strip(),
         audience_rule=audience_rule,
         status=CampaignStatus.DRAFT,
-        scheduled_for=None,
+        scheduled_for=scheduled_dt,   # store scheduled time for later use
         created_at=datetime.utcnow(),
     )
-    _campaign_repo(session).save_campaign(campaign)
+
+    campaign_repository = _campaign_repo(session)
+    campaign_repository.save_campaign(campaign)
+    session.commit()   # ensure the record is persisted
+
+    # Redirect back to the workspace – the user can launch the draft manually
     return redirect("/campaigns/workspace")
 
 
@@ -815,42 +974,13 @@ def launch_campaign(
     session: Session = Depends(get_session),
 ):
     campaign_repository = _campaign_repo(session)
-    recipient_repository = _campaign_recipient_repo(session)
-    customer_repository = _customer_repo(session)
-    tag_repository = _tag_repo(session)
-    tag_map_repository = _tag_map_repo(session)
-
     campaign = campaign_repository.get_campaign_by_id(campaign_id)
     if campaign is None:
         raise HTTPException(status_code=404, detail="Campaign not found.")
 
-    customers = ListCustomers(customer_repository).execute()
-    tags = ListTags(tag_repository).execute()
-    tags_by_customer_id: dict[int, list[Tag]] = defaultdict(list)
-    for tag_map in tag_map_repository.list_tag_maps():
-        tag = next((item for item in tags if item.id == tag_map.tag_id), None)
-        if tag is not None:
-            tags_by_customer_id[tag_map.customer_id].append(tag)
+    # Use the reusable helper
+    _launch_campaign(campaign, session)
 
-    recipients: list[CampaignRecipientResult] = []
-    for customer in customers:
-        customer_tag_ids = {tag.id for tag in tags_by_customer_id.get(customer.id, [])}
-        if not _customer_matches_rule(customer, customer_tag_ids, campaign.audience_rule):
-            continue
-
-        has_phone = bool(customer.cellphone and customer.cellphone.strip())
-        recipients.append(
-            CampaignRecipientResult(
-                customer_id=customer.id,
-                recipient_phone=customer.cellphone or "",
-                status=CampaignMessageStatus.ACCEPTED if has_phone else CampaignMessageStatus.FAILED,
-                ycloud_message_id=None,
-                external_id=f"campaign-{campaign.id}-customer-{customer.id}",
-                failure_reason=None if has_phone else "Missing cellphone number",
-            )
-        )
-
-    recipient_repository.save_recipients(campaign.id, recipients)
     campaign_repository.update_campaign_status(
         campaign.id,
         CampaignStatus.COMPLETED.value,

@@ -9,9 +9,9 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
 
-from .infrastructure.auth import create_user, delete_user, list_users, hash_password
-from .infrastructure.database import DATABASE_URL
-from .infrastructure.database import SessionLocal
+from clean_crm.infrastructure.auth import create_user, delete_user, list_users, hash_password
+from clean_crm.infrastructure.database import DATABASE_URL
+from clean_crm.infrastructure.database import SessionLocal
 
 
 def _project_root() -> Path:

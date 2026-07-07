@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...infrastructure.auth import (
-    AUTH_COOKIE_NAME,
     authenticate_user,
     create_access_token,
 )

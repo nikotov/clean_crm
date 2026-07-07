@@ -573,3 +573,12 @@ class SQLAlchemyCampaignRecipientRepository(CampaignRecipientRepository):
         self.session.flush()
         self.session.commit()
         return _recipient_to_domain(model)
+    
+    def update_recipient_status(self, recipient_id: int, status: str, ycloud_message_id: str | None = None, failure_reason: str | None = None):
+        recipient = self.session.query(CampaignRecipientModel).filter_by(id=recipient_id).first()
+        if recipient:
+            recipient.status = status
+            recipient.ycloud_message_id = ycloud_message_id
+            recipient.failure_reason = failure_reason
+            recipient.updated_at = datetime.utcnow()
+            self.session.add(recipient)
