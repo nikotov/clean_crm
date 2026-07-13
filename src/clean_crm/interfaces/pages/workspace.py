@@ -512,20 +512,20 @@ def _launch_campaign(
 
 # Inside the loop over recipients
         try:
-            print(f"Sending to {phone} with payload: {payload}")
+            #print(f"Sending to {phone} with payload: {payload}")
             response = client.send_message(payload)
-            print(f"YCloud response: {response}")  # This will print the dict returned by the client
+            #print(f"YCloud response: {response}")  # This will print the dict returned by the client
             ycloud_id = response.get("id")
             api_status = response.get("status", "accepted")
             # ... update recipient as before ...
         except YCloudApiError as e:
-            print(f"YCloudApiError for {phone}: {e}")
+            #print(f"YCloudApiError for {phone}: {e}")
             # If the client raises, e might contain response body; we can also access e.response if available
             # But we can also print the full error
             rec.status = CampaignMessageStatus.FAILED
             rec.failure_reason = str(e)
         except Exception as e:
-            print(f"Unexpected error for {phone}: {e}")
+            #print(f"Unexpected error for {phone}: {e}")
             rec.status = CampaignMessageStatus.FAILED
             rec.failure_reason = f"Unexpected: {str(e)}"
 
@@ -549,6 +549,106 @@ def _launch_campaign(
     session.commit()
     return recipients
 
+def _sync_all_templates(session: Session) -> dict[str, int]:
+    client = _get_ycloud_client()
+    waba_id = environ.get("YCLOUD_WABA_ID")
+    if not waba_id:
+        raise YCloudConfigurationError("YCLOUD_WABA_ID not set")
+
+    template_repo = _campaign_template_repo(session)
+
+    local_templates = template_repo.list_templates()
+    local_lookup = {(t.ycloud_template_name, t.language_code): t for t in local_templates}
+
+    created = updated = failed = 0
+    page = 1
+    limit = 100
+
+    while True:
+        response = client.list_templates(
+            page=page,
+            limit=limit,
+            filter_waba_id=waba_id,
+        )
+        items = response.get("items", [])
+        if not items:
+            break
+
+        for remote in items:
+            try:
+                name = remote.get("name")
+                language = remote.get("language")
+                if not name or not language:
+                    continue
+
+                # ---------- SAFE CATEGORY ----------
+                category_str = remote.get("category", "UTILITY").upper()
+                try:
+                    category = Category(category_str)
+                except ValueError:
+                    category = Category.UTILITY
+
+                # ---------- SAFE STATUS ----------
+                status_str = remote.get("status", "DRAFT").upper()
+                # If your enum doesn't have all statuses, map them:
+                status_mapping = {
+                    "APPROVED": CampaignTemplateStatus.APPROVED,
+                    "PENDING": CampaignTemplateStatus.PENDING_REVIEW,
+                    "PENDING_REVIEW": CampaignTemplateStatus.PENDING_REVIEW,
+                    "REJECTED": CampaignTemplateStatus.REJECTED,
+                    "PAUSED": CampaignTemplateStatus.PAUSED,
+                    "DISABLED": CampaignTemplateStatus.DISABLED,
+                }
+                status = status_mapping.get(status_str, CampaignTemplateStatus.DRAFT)
+
+                approval_note = remote.get("approvalNote") or remote.get("rejectionReason")
+                components_data = remote.get("components", [])
+
+                components = [
+                    CampaignTemplateComponent(
+                        type=comp.get("type"),
+                        text=comp.get("text"),
+                    )
+                    for comp in components_data
+                ]
+
+                key = (name, language)
+                existing = local_lookup.get(key)
+
+                if existing:
+                    existing.status = status
+                    existing.category = category
+                    existing.components = components
+                    existing.approval_note = approval_note
+                    existing.last_synced_at = datetime.utcnow()
+                    template_repo.save_template(existing)
+                    updated += 1
+                else:
+                    new_template = CampaignTemplate(
+                        id=0,
+                        name=name,
+                        ycloud_template_name=name,
+                        language_code=language,
+                        category=category,
+                        status=status,
+                        components=components,
+                        created_at=datetime.utcnow(),
+                        last_synced_at=datetime.utcnow(),
+                        approval_note=approval_note,
+                    )
+                    template_repo.save_template(new_template)
+                    created += 1
+
+            except Exception as e:
+                failed += 1
+                print(f"⚠️ Error syncing template {remote.get('name')}: {e}")
+
+        if len(items) < limit:
+            break
+        page += 1
+
+    session.commit()
+    return {"created": created, "updated": updated, "failed": failed}
 
 # ========================
 # ENDPOINTS
@@ -986,4 +1086,16 @@ def launch_campaign(
         CampaignStatus.COMPLETED.value,
         launched_at=datetime.utcnow(),
     )
+    return redirect("/campaigns/workspace")
+
+@router.post("/campaigns/workspace/templates/sync-all", include_in_schema=False)
+def sync_all_templates_endpoint(session: Session = Depends(get_session)):
+    
+    try:
+        counts = _sync_all_templates(session)
+        #msg = f"Synced: {counts['created']} created, {counts['updated']} updated, {counts['failed']} failed"
+        #return redirect(f"/campaigns/workspace?message={msg}")
+    except YCloudConfigurationError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    
     return redirect("/campaigns/workspace")

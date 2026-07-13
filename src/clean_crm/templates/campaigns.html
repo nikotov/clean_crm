@@ -40,6 +40,16 @@
         <h2 data-i18n="campaigns.create.title">📤 Create & send campaign</h2>
         <p data-i18n="campaigns.create.lede">Define who to message, what to send, and hit send.</p>
       </div>
+
+      <div>
+        <form method="post" action="/campaigns/workspace/templates/sync-all" style="display: inline;">
+          <button type="submit" class="button secondary small" 
+                  title="Fetch the latest templates from YCloud and update the local list">
+            🔄 Sync templates
+          </button>
+        </form>
+      </div>
+
     </div>
 
     {# 

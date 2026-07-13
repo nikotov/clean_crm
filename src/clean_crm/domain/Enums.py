@@ -17,6 +17,8 @@ class CampaignTemplateStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     ARCHIVED = "archived"
+    PAUSED = "paused"          # <- add
+    DISABLED = "disabled"      # <- add
 
 
 class CampaignMessageStatus(StrEnum):
