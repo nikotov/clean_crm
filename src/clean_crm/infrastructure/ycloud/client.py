@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 from urllib.parse import quote, urlencode
 from urllib.error import HTTPError, URLError
@@ -23,6 +24,8 @@ class YCloudClient:
         default_waba_id: str | None = None,
     ):
 
+
+        self._last_request = 0.0
         if not api_key:
             raise YCloudConfigurationError(
                 "Missing YCloud API key."
@@ -33,6 +36,17 @@ class YCloudClient:
         self.timeout = timeout
         self.default_waba_id = default_waba_id
 
+
+    def _wait_for_rate_limit(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self._last_request
+
+        if elapsed < 0.2:
+            time.sleep(0.2 - elapsed)
+        
+        self._last_request = time.monotonic()
+
+
     def _request(
         self,
         method: str,
@@ -40,6 +54,8 @@ class YCloudClient:
         query: dict[str, Any] | None = None,
         payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        
+        self._wait_for_rate_limit()
 
         url = f"{self.base_url}{endpoint}"
         if query:
@@ -69,7 +85,7 @@ class YCloudClient:
                 "X-API-Key": self.api_key,
             },
         )
-        print(f"FULL REQUEST URL: {url}")
+        # print(f"FULL REQUEST URL: {url}")
         try:
 
             with urlopen(
@@ -97,6 +113,8 @@ class YCloudClient:
             raise YCloudApiError(
                 str(e.reason)
             ) from e
+        
+
 
     def list_templates(
         self,
