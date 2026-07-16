@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, cast
 
 from sqlalchemy import select
@@ -77,13 +77,44 @@ def _template_to_domain(model: CampaignTemplateModel) -> CampaignTemplate:
             continue
 
         if isinstance(component, dict):
-            raw_text = component.get("text")
-            components.append(
-                CampaignTemplateComponent(
-                    type=str(component.get("type", "")),
-                    text=raw_text if isinstance(raw_text, str) else None,
-                )
+            # Safely extract with explicit type checks
+            comp_type = str(component.get("type", "")).lower()
+
+            text_val = component.get("text")
+            text_val = text_val if isinstance(text_val, str) else None
+
+            format_val = component.get("format")
+            format_val = format_val if isinstance(format_val, str) else None
+
+            sub_type_val = component.get("sub_type")
+            sub_type_val = sub_type_val if isinstance(sub_type_val, str) else None
+
+            # Safe index conversion
+            index_val = component.get("index")
+            if index_val is not None:
+                if isinstance(index_val, int):
+                    index_val_int = index_val
+                elif isinstance(index_val, str) and index_val.isdigit():
+                    index_val_int = int(index_val)
+                else:
+                    index_val_int = None
+            else:
+                index_val_int = None
+
+            # Extra: ensure it's a dict
+            extra_val = component.get("extra")
+            if not isinstance(extra_val, dict):
+                extra_val = {}
+
+            comp = CampaignTemplateComponent(
+                type=comp_type,
+                text=text_val,
+                format=format_val,
+                sub_type=sub_type_val,
+                index=index_val_int,
+                extra=extra_val,
             )
+            components.append(comp)
 
     return CampaignTemplate(
         id=model.id,
@@ -102,13 +133,28 @@ def _template_to_domain(model: CampaignTemplateModel) -> CampaignTemplate:
 
 def _template_components_to_payload(template: CampaignTemplate) -> list[dict[str, object]]:
     payload: list[dict[str, object]] = []
-    for component in template.components:
-        payload.append(
-            {
-                "type": component.type,
-                **({"text": component.text} if component.text is not None else {}),
-            }
-        )
+    for comp in template.components:
+        item: dict[str, object] = {"type": comp.type}
+
+        # Add format if present (for header)
+        if comp.format is not None:
+            item["format"] = comp.format
+
+        # Add text if present
+        if comp.text is not None:
+            item["text"] = comp.text
+
+        # Add sub_type and index for buttons
+        if comp.sub_type is not None:
+            item["sub_type"] = comp.sub_type
+        if comp.index is not None:
+            item["index"] = comp.index
+
+        # Add extra fields (like example for buttons)
+        if comp.extra:
+            item.update(comp.extra)
+
+        payload.append(item)
     return payload
 
 
@@ -133,6 +179,9 @@ def _campaign_to_domain(model: CampaignModel) -> Campaign:
         scheduled_for=model.scheduled_for,
         created_at=model.created_at,
         launched_at=model.launched_at,
+        parameter_mapping=model.parameter_mapping or {},
+        header_media_url=model.header_media_url,
+        header_media_id=model.header_media_id,
     )
 
 
@@ -174,7 +223,13 @@ class SQLAlchemyUserRepository(UserRepository):
     def save_user(self, user: User) -> User:
         model = self.session.get(UserModel, user.id)
         if model is None:
-            model = UserModel(username=user.username, hash_password=user.hash_password, email=user.email, created_at=user.created_at, last_login=user.last_login)
+            model = UserModel(
+                username=user.username,
+                hash_password=user.hash_password,
+                email=user.email,
+                created_at=user.created_at,
+                last_login=user.last_login,
+            )
             self.session.add(model)
         else:
             model.username = user.username
@@ -182,7 +237,6 @@ class SQLAlchemyUserRepository(UserRepository):
             model.email = user.email
             model.created_at = user.created_at
             model.last_login = user.last_login
-        self.session.flush()
         self.session.commit()
         return _user_to_domain(model)
 
@@ -192,7 +246,6 @@ class SQLAlchemyUserRepository(UserRepository):
             return None
 
         model.last_login = last_login
-        self.session.flush()
         self.session.commit()
         return _user_to_domain(model)
 
@@ -240,16 +293,14 @@ class SQLAlchemyCustomerRepository(CustomerRepository):
             )
             self.session.add(model)
         else:
-            model_data = cast(Any, model)
             model.name = customer.name
             model.email = customer.email
-            model.created_at = customer.created_at
-            model.updated_at = customer.updated_at
-            model_data.birthdate = _customer_birthdate_to_datetime(customer.birthdate)
+            # Do not overwrite created_at; keep original
+            model.updated_at = datetime.now(timezone.utc)
+            model.birthdate = _customer_birthdate_to_datetime(customer.birthdate)
             model.age = customer.age
             model.city = customer.city
             model.cellphone = customer.cellphone
-        self.session.flush()
         self.session.commit()
         return _customer_to_domain(model)
 
@@ -301,7 +352,6 @@ class SQLAlchemyTagRepository(TagRepository):
         else:
             model.name = tag.name
             model.created_at = tag.created_at
-        self.session.flush()
         self.session.commit()
         return _tag_to_domain(model)
 
@@ -322,7 +372,6 @@ class SQLAlchemyTagRepository(TagRepository):
             raise ValueError("Tag not found")
 
         model.name = name
-        self.session.flush()
         self.session.commit()
         return _tag_to_domain(model)
 
@@ -332,14 +381,19 @@ class SQLAlchemyTagMapRepository(TagMapRepository):
         self.session = session
 
     def get_tag_map(self, customer_id: int, tag_id: int) -> TagMap | None:
-        stmt = select(TagMapModel).where(TagMapModel.customer_id == customer_id, TagMapModel.tag_id == tag_id)
+        stmt = select(TagMapModel).where(
+            TagMapModel.customer_id == customer_id,
+            TagMapModel.tag_id == tag_id
+        )
         model = self.session.execute(stmt).scalar_one_or_none()
         if model is None:
             return None
         return _tag_map_to_domain(model)
 
     def list_tag_maps(self) -> list[TagMap]:
-        models = self.session.execute(select(TagMapModel).order_by(TagMapModel.customer_id, TagMapModel.tag_id)).scalars().all()
+        models = self.session.execute(
+            select(TagMapModel).order_by(TagMapModel.customer_id, TagMapModel.tag_id)
+        ).scalars().all()
         return [_tag_map_to_domain(model) for model in models]
 
     def save_tag_map(self, tag_map: TagMap) -> TagMap:
@@ -353,7 +407,6 @@ class SQLAlchemyTagMapRepository(TagMapRepository):
             self.session.add(model)
         else:
             model.created_at = tag_map.created_at
-        self.session.flush()
         self.session.commit()
         return _tag_map_to_domain(model)
 
@@ -361,6 +414,9 @@ class SQLAlchemyTagMapRepository(TagMapRepository):
         saved_tag_maps: list[TagMap] = []
         for tag_map in tag_maps:
             saved_tag_maps.append(self.save_tag_map(tag_map))
+        # Commit once after all saves (each save already commits, but we can do bulk)
+        # To improve, we could use add_all and commit once, but for simplicity keep as is.
+        # Alternatively, we can override to use bulk operations.
         return saved_tag_maps
 
     def delete_tag_map(self, customer_id: int, tag_id: int) -> None:
@@ -413,10 +469,9 @@ class SQLAlchemyCampaignTemplateRepository(CampaignTemplateRepository):
             model.category = template.category.value
             model.status = template.status.value
             model.components = _template_components_to_payload(template)
-            model.updated_at = template.updated_at
+            model.updated_at = datetime.now(timezone.utc)
             model.last_synced_at = template.last_synced_at
             model.approval_note = template.approval_note
-        self.session.flush()
         self.session.commit()
         return _template_to_domain(model)
 
@@ -434,8 +489,7 @@ class SQLAlchemyCampaignTemplateRepository(CampaignTemplateRepository):
         model.status = status
         model.approval_note = approval_note
         model.last_synced_at = last_synced_at
-        model.updated_at = last_synced_at
-        self.session.flush()
+        model.updated_at = datetime.now(timezone.utc)
         self.session.commit()
         return _template_to_domain(model)
 
@@ -444,15 +498,31 @@ class SQLAlchemyCampaignRepository(CampaignRepository):
     def __init__(self, session: Session):
         self.session = session
 
+    def _from_model(self, model: CampaignModel) -> Campaign:
+        return Campaign(
+            id=model.id,
+            name=model.name,
+            template_id=model.template_id,
+            sender_phone_number=model.sender_phone_number,
+            audience_rule=CampaignAudienceRule.from_mapping(model.audience_rule or {}),
+            status=CampaignStatus(model.status),
+            scheduled_for=model.scheduled_for,
+            created_at=model.created_at,
+            launched_at=model.launched_at,
+            parameter_mapping=model.parameter_mapping or {},
+            header_media_url=model.header_media_url,
+            header_media_id=model.header_media_id,
+        )
+
     def get_campaign_by_id(self, campaign_id: int) -> Campaign | None:
         model = self.session.get(CampaignModel, campaign_id)
         if model is None:
             return None
-        return _campaign_to_domain(model)
+        return self._from_model(model)
 
     def list_campaigns(self) -> list[Campaign]:
         models = self.session.execute(select(CampaignModel).order_by(CampaignModel.id)).scalars().all()
-        return [_campaign_to_domain(model) for model in models]
+        return [self._from_model(model) for model in models]
 
     def save_campaign(self, campaign: Campaign) -> Campaign:
         model = self.session.get(CampaignModel, campaign.id)
@@ -466,6 +536,9 @@ class SQLAlchemyCampaignRepository(CampaignRepository):
                 scheduled_for=campaign.scheduled_for,
                 created_at=campaign.created_at,
                 launched_at=campaign.launched_at,
+                parameter_mapping=campaign.parameter_mapping,
+                header_media_url=campaign.header_media_url,
+                header_media_id=campaign.header_media_id,
             )
             self.session.add(model)
         else:
@@ -476,9 +549,11 @@ class SQLAlchemyCampaignRepository(CampaignRepository):
             model.status = campaign.status.value
             model.scheduled_for = campaign.scheduled_for
             model.launched_at = campaign.launched_at
-        self.session.flush()
+            model.parameter_mapping = campaign.parameter_mapping
+            model.header_media_url = campaign.header_media_url
+            model.header_media_id = campaign.header_media_id
         self.session.commit()
-        return _campaign_to_domain(model)
+        return self._from_model(model)
 
     def update_campaign_status(self, campaign_id: int, status: str, launched_at=None) -> Campaign:
         model = self.session.get(CampaignModel, campaign_id)
@@ -488,9 +563,8 @@ class SQLAlchemyCampaignRepository(CampaignRepository):
         model.status = status
         if launched_at is not None:
             model.launched_at = launched_at
-        self.session.flush()
         self.session.commit()
-        return _campaign_to_domain(model)
+        return self._from_model(model)
 
 
 class SQLAlchemyCampaignRecipientRepository(CampaignRecipientRepository):
@@ -498,20 +572,20 @@ class SQLAlchemyCampaignRecipientRepository(CampaignRecipientRepository):
         self.session = session
 
     def list_recipients_for_campaign(self, campaign_id: int) -> list[CampaignRecipientResult]:
-        models = self.session.execute(
-            select(CampaignRecipientModel).where(CampaignRecipientModel.campaign_id == campaign_id).order_by(CampaignRecipientModel.id)
-        ).scalars().all()
+        stmt = select(CampaignRecipientModel).where(
+            CampaignRecipientModel.campaign_id == campaign_id
+        ).order_by(CampaignRecipientModel.id)
+        models = self.session.execute(stmt).scalars().all()
         return [_recipient_to_domain(model) for model in models]
 
     def save_recipients(self, campaign_id: int, recipients: list[CampaignRecipientResult]) -> list[CampaignRecipientResult]:
         saved_recipients: list[CampaignRecipientResult] = []
         for recipient in recipients:
-            model = self.session.execute(
-                select(CampaignRecipientModel).where(
-                    CampaignRecipientModel.campaign_id == campaign_id,
-                    CampaignRecipientModel.customer_id == recipient.customer_id,
-                )
-            ).scalar_one_or_none()
+            stmt = select(CampaignRecipientModel).where(
+                CampaignRecipientModel.campaign_id == campaign_id,
+                CampaignRecipientModel.customer_id == recipient.customer_id,
+            )
+            model = self.session.execute(stmt).scalar_one_or_none()
             if model is None:
                 model = CampaignRecipientModel(
                     campaign_id=campaign_id,
@@ -531,7 +605,6 @@ class SQLAlchemyCampaignRecipientRepository(CampaignRecipientRepository):
                 model.failure_reason = recipient.failure_reason
             saved_recipients.append(recipient)
 
-        self.session.flush()
         self.session.commit()
         return saved_recipients
 
@@ -542,9 +615,8 @@ class SQLAlchemyCampaignRecipientRepository(CampaignRecipientRepository):
         ycloud_message_id: str | None = None,
         failure_reason: str | None = None,
     ) -> CampaignRecipientResult | None:
-        model = self.session.execute(
-            select(CampaignRecipientModel).where(CampaignRecipientModel.external_id == external_id)
-        ).scalar_one_or_none()
+        stmt = select(CampaignRecipientModel).where(CampaignRecipientModel.external_id == external_id)
+        model = self.session.execute(stmt).scalar_one_or_none()
         if model is None:
             return None
 
@@ -552,7 +624,6 @@ class SQLAlchemyCampaignRecipientRepository(CampaignRecipientRepository):
         if ycloud_message_id is not None:
             model.ycloud_message_id = ycloud_message_id
         model.failure_reason = failure_reason
-        self.session.flush()
         self.session.commit()
         return _recipient_to_domain(model)
 
@@ -562,23 +633,29 @@ class SQLAlchemyCampaignRecipientRepository(CampaignRecipientRepository):
         status: CampaignMessageStatus,
         failure_reason: str | None = None,
     ) -> CampaignRecipientResult | None:
-        model = self.session.execute(
-            select(CampaignRecipientModel).where(CampaignRecipientModel.ycloud_message_id == ycloud_message_id)
-        ).scalar_one_or_none()
+        stmt = select(CampaignRecipientModel).where(CampaignRecipientModel.ycloud_message_id == ycloud_message_id)
+        model = self.session.execute(stmt).scalar_one_or_none()
         if model is None:
             return None
 
         model.status = status.value
         model.failure_reason = failure_reason
-        self.session.flush()
         self.session.commit()
         return _recipient_to_domain(model)
-    
-    def update_recipient_status(self, recipient_id: int, status: str, ycloud_message_id: str | None = None, failure_reason: str | None = None):
-        recipient = self.session.query(CampaignRecipientModel).filter_by(id=recipient_id).first()
-        if recipient:
-            recipient.status = status
-            recipient.ycloud_message_id = ycloud_message_id
-            recipient.failure_reason = failure_reason
-            recipient.updated_at = datetime.utcnow()
-            self.session.add(recipient)
+
+    def update_recipient_status(
+        self,
+        recipient_id: int,
+        status: str,
+        ycloud_message_id: str | None = None,
+        failure_reason: str | None = None,
+    ):
+        model = self.session.get(CampaignRecipientModel, recipient_id)
+        if model:
+            model.status = status
+            model.ycloud_message_id = ycloud_message_id
+            model.failure_reason = failure_reason
+            # Assume model has updated_at; set if exists
+            if hasattr(model, 'updated_at'):
+                model.updated_at = datetime.now(timezone.utc)
+            self.session.commit()

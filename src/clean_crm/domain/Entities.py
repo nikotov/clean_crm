@@ -1,6 +1,8 @@
+import json
+
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Any
 from .Enums import (
     CampaignStatus,
     CampaignTemplateStatus,
@@ -93,7 +95,35 @@ class CampaignAudienceRule:
 @dataclass
 class CampaignTemplateComponent:
     type: str
+    format: str | None = None
     text: str | None = None
+    sub_type: str | None = None
+    index: int | None = None
+
+    extra: dict[str, object] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, object]:
+        data = {
+            "type": self.type,
+            "format": self.format,
+            "text": self.text,
+            "sub_type": self.sub_type,
+            "index": self.index,
+            "extra": self.extra,
+        }
+
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CampaignTemplateComponent":
+        return cls(
+            type=data.get("type", ""),
+            format=data.get("format"),
+            text=data.get("text"),
+            sub_type=data.get("sub_type"),
+            index=data.get("index"),
+            extra=data.get("extra", {}),
+        )
 
 
 @dataclass
@@ -123,6 +153,9 @@ class Campaign:
     scheduled_for: datetime | None
     created_at: datetime
     launched_at: datetime | None = None
+    parameter_mapping: dict[str, str] | None = None
+    header_media_url: str | None = None
+    header_media_id: str | None = None
 
 
 @dataclass
@@ -154,3 +187,16 @@ class CampaignLaunchResult:
     failed_count: int
     skipped_count: int
     recipients: list[CampaignRecipientResult]
+
+
+def serialize_components(components: list[CampaignTemplateComponent]) -> str:
+    return json.dumps([c.to_dict() for c in components])
+
+def deserialize_components(json_str: str) -> list[CampaignTemplateComponent]:
+    if not json_str:
+        return []
+    try:
+        data = json.loads(json_str)
+        return [CampaignTemplateComponent.from_dict(item) for item in data]
+    except (json.JSONDecodeError, TypeError):
+        return []
