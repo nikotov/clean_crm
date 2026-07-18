@@ -1,7 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
-  {# --- HERO & METRICS (mostly unchanged) --- #}
+  {# --- Flash messages (from query params) --- #}
+  {% if request.query_params.get('message') %}
+    <div class="flash success">{{ request.query_params.get('message') }}</div>
+  {% endif %}
+  {% if request.query_params.get('error') %}
+    <div class="flash error">{{ request.query_params.get('error') }}</div>
+  {% endif %}
+  {% if flash_message %}
+    <div class="flash success">{{ flash_message }} {% if form_data.header_media_url %} URL: <strong>{{ form_data.header_media_url }}</strong>{% endif %}</div>
+  {% endif %}
+  {% if flash_error %}
+    <div class="flash error">{{ flash_error }}</div>
+  {% endif %}
+
+  {# --- Hero & Metrics --- #}
   <section class="hero">
     <div>
       <div class="eyebrow" data-i18n="campaigns.eyebrow">Campaigns</div>
@@ -32,32 +46,25 @@
   </section>
 
   {# ========================================================== #}
-  {# ZONE 1: UNIFIED CREATE & SEND FORM                         #}
+  {# ZONE 1: CREATE CAMPAIGN (DRAFT ONLY)                      #}
   {# ========================================================== #}
   <section class="panel" style="margin-top: 24px;">
     <div class="panel-header">
       <div>
-        <h2 data-i18n="campaigns.create.title">📤 Create & send campaign</h2>
-        <p data-i18n="campaigns.create.lede">Define who to message, what to send, and hit send.</p>
+        <h2 data-i18n="campaigns.create.title">📝 Create a draft campaign</h2>
+        <p data-i18n="campaigns.create.lede">Define your audience and message. After saving, you can launch it from the list below.</p>
       </div>
-
       <div>
         <form method="post" action="/campaigns/workspace/templates/sync-all" style="display: inline;">
-          <button type="submit" class="button secondary small" 
-                  title="Fetch the latest templates from YCloud and update the local list">
+          <button type="submit" class="button secondary small" title="Fetch the latest templates from YCloud">
             🔄 Sync templates
           </button>
         </form>
       </div>
-
     </div>
 
-    {# 
-      Important: This is a SINGLE POST form. 
-      It includes BOTH the audience filters AND the campaign details.
-      The backend will re-calculate the recipient list at submission time.
-    #}
     <form class="form" method="post" action="/campaigns/workspace/campaigns">
+      <input type="hidden" name="action" value="draft">
 
       {# --- Row 1: Basic Details --- #}
       <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; align-items: end;">
@@ -71,8 +78,7 @@
             <option value="" selected disabled data-i18n="campaigns.create.template_placeholder">Select a template</option>
             {% for row in templates %}
               {% set template = row.template %}
-              {# Mark the template as "approved" or "pending" visually for the user #}
-              <option value="{{ template.id }}" 
+              <option value="{{ template.id }}"
                 {% if form_data.template_id == template.id|string %}selected{% endif %}
                 data-status="{{ template.status.value }}">
                 {{ template.name }} ({{ template.language_code }}) - {{ row.status_label }}
@@ -83,16 +89,12 @@
         </div>
         <div class="field">
           <label for="campaign-sender" data-i18n="campaigns.create.sender">Sender number *</label>
-          {# 
-            IMPROVEMENT: Dropdown instead of free-text to avoid typos.
-            Pass `sender_numbers` from the backend (list of verified WABA numbers).
-          #}
           <select id="campaign-sender" name="sender_phone_number" required>
             <option value="" disabled {% if not form_data.sender_phone_number %}selected{% endif %}>
               Select a number
             </option>
             {% for number in sender_numbers %}
-              <option value="{{ number }}" 
+              <option value="{{ number }}"
                 {% if form_data.sender_phone_number == number %}selected{% endif %}>
                 {{ number }}
               </option>
@@ -104,14 +106,28 @@
       {# --- Row 2: Scheduling --- #}
       <div class="field" style="margin-top: 12px;">
         <label for="campaign-schedule" data-i18n="campaigns.create.schedule">Schedule send (optional)</label>
-        <input id="campaign-schedule" name="scheduled_at" type="datetime-local" 
+        <input id="campaign-schedule" name="scheduled_at" type="datetime-local"
                value="{{ form_data.scheduled_at or '' }}">
-        <div class="field-help" data-i18n="campaigns.create.schedule_help">Leave empty to send immediately.</div>
+        <div class="field-help" data-i18n="campaigns.create.schedule_help">Leave empty to send immediately when launched.</div>
       </div>
 
       <hr style="margin: 20px 0; border-color: var(--border);">
 
-      {# --- Row 3: Audience Definition & Live Preview --- #}
+      {# --- Parameter Mapping & Media URL fields --- #}
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="field">
+          <label for="parameter-mapping">Placeholder mapping (JSON)</label>
+          <textarea id="parameter-mapping" name="parameter_mapping_json" rows="2" placeholder='{"1":"name","2":"cellphone"}' style="font-family: monospace;">{{ form_data.parameter_mapping_json or '' }}</textarea>
+          <div class="field-help">Map placeholder numbers to customer fields (e.g., "name", "email", "cellphone", "city").</div>
+        </div>
+        <div class="field">
+          <label for="header-media-url">Header media URL</label>
+          <input id="header-media-url" name="header_media_url" type="url" placeholder="https://example.com/image.jpg" value="{{ form_data.header_media_url or '' }}">
+          <div class="field-help">Required if the template has a media header. Use a publicly accessible URL (image, video, document).</div>
+        </div>
+      </div>
+
+      {# --- Audience Definition & Live Preview --- #}
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <h3 data-i18n="campaigns.preview.title">👥 Target audience</h3>
         <span class="status-chip approved">
@@ -119,11 +135,6 @@
         </span>
       </div>
 
-      {# 
-        IMPORTANT: These filter fields are part of the SAME form.
-        The "Refresh preview" button is a GET request that will re-render the page
-        with the current filters, but the POST submission will also send these fields.
-      #}
       <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; align-items: start;">
         {# Tags #}
         <div class="field">
@@ -131,7 +142,7 @@
           <div class="checklist">
             {% for tag in tags %}
               <label class="check-option" style="display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" name="tag_ids" value="{{ tag.id }}" 
+                <input type="checkbox" name="tag_ids" value="{{ tag.id }}"
                   {% if tag.id in preview_filters.tag_ids %}checked{% endif %}>
                 <span>{{ tag.name }}</span>
               </label>
@@ -145,30 +156,30 @@
         <div class="field">
           <label data-i18n="campaigns.preview.birthday">Birthday today</label>
           <label class="selection-row" style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
-            <input type="checkbox" name="birthday_today" value="true" 
+            <input type="checkbox" name="birthday_today" value="true"
               {% if preview_filters.birthday_today %}checked{% endif %}>
             <span data-i18n="campaigns.preview.include">Include</span>
           </label>
 
           <div style="margin-top: 16px;">
             <label for="city-input" data-i18n="campaigns.preview.city">City</label>
-            <input id="city-input" type="text" name="city" 
-                   value="{{ preview_filters.city or '' }}" 
-                   placeholder="e.g. New York" 
+            <input id="city-input" type="text" name="city"
+                   value="{{ preview_filters.city or '' }}"
+                   placeholder="e.g. New York"
                    data-i18n-placeholder="campaigns.preview.city_placeholder"
                    style="width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: color-mix(in srgb, var(--panel-strong) 88%, transparent); color: var(--text);">
           </div>
         </div>
 
-        {# Preview Control #}
+        {# Refresh Preview button #}
         <div style="display: flex; flex-direction: column; justify-content: flex-end; height: 100%;">
-          <button class="button secondary" type="submit" formmethod="get" formaction="/campaigns/workspace" 
+          <button class="button secondary" type="submit" formmethod="get" formaction="/campaigns/workspace"
                   data-i18n="campaigns.preview.button">
             🔄 Refresh preview
           </button>
-          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 8px;" 
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 8px;"
              data-i18n="campaigns.preview.hint">
-            Filters are applied when you refresh. The audience below will be sent when you click Send.
+            Filters are applied when you refresh. The audience shown will be used when launching.
           </p>
         </div>
       </div>
@@ -195,35 +206,28 @@
         {% endif %}
       </div>
 
-      {# --- Row 4: Action Buttons (Draft vs Send) --- #}
+      {# --- Action Buttons (only "Save as draft") --- #}
       <div style="display: flex; gap: 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border);">
-        {# PRIMARY ACTION: Send Now or Schedule #}
-        <button class="button primary" type="submit" name="action" value="send" 
-                data-i18n="campaigns.create.send_button">
-          🚀 Send now (or schedule)
-        </button>
-        
-        {# SECONDARY ACTION: Save as draft (does not send) #}
-        <button class="button secondary" type="submit" name="action" value="draft" 
-                data-i18n="campaigns.create.draft_button">
+        <button class="button primary" type="submit" data-i18n="campaigns.create.draft_button">
           💾 Save as draft
         </button>
-        
-        {# Optional: Cancel #}
-        <a href="/campaigns/workspace" class="button tertiary" style="margin-left: auto;" 
+        <a href="/campaigns/workspace" class="button tertiary" style="margin-left: auto;"
            data-i18n="campaigns.create.cancel">Cancel</a>
+      </div>
+      <div style="margin-top: 8px; font-size: 0.9rem; color: var(--text-muted);">
+        ⚡ After saving, you can launch the campaign from the history list below.
       </div>
     </form>
   </section>
 
   {# ========================================================== #}
-  {# ZONE 2: CAMPAIGN HISTORY (Simplified)                      #}
-  #} {# ========================================================== #}
+  {# ZONE 2: CAMPAIGN HISTORY (with improved Launch UX)         #}
+  {# ========================================================== #}
   <section class="panel" style="margin-top: 32px;">
     <div class="panel-header">
       <div>
         <h2 data-i18n="campaigns.list.title">📋 Campaign history</h2>
-        <p data-i18n="campaigns.list.lede">Review saved campaigns and launch drafts.</p>
+        <p data-i18n="campaigns.list.lede">Review saved campaigns and launch drafts when ready.</p>
       </div>
     </div>
 
@@ -231,35 +235,32 @@
       {% for row in campaigns %}
         {% set campaign = row.campaign %}
         <div class="mini-list-item campaign-row">
-          <div class="campaign-row-header" style="display: flex; justify-content: space-between; align-items: start; width: 100%;">
-            <div>
+          <div class="campaign-row-header" style="display: flex; justify-content: space-between; align-items: start; width: 100%; flex-wrap: wrap; gap: 12px;">
+            <div style="flex: 1;">
               <strong>{{ campaign.name }}</strong>
               <p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-muted);">
-                Template: {{ row.template.name if row.template else 'Deleted' }} · 
-                Sender: {{ campaign.sender_phone_number }} · 
+                Template: {{ row.template.name if row.template else 'Deleted' }} ·
+                Sender: {{ campaign.sender_phone_number }} ·
                 Scheduled: {{ campaign.scheduled_for or 'Immediate' }}
               </p>
               <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--text-muted);">
-                Audience: 
+                Audience:
                 {% if campaign.audience_rule.tag_ids %} {{ campaign.audience_rule.tag_ids|length }} tags{% endif %}
                 {% if campaign.audience_rule.birthday_today %} · Birthday today{% endif %}
                 {% if campaign.audience_rule.city %} · City: {{ campaign.audience_rule.city }}{% endif %}
                 ({{ row.recipient_count }} recipients)
               </p>
             </div>
-            
+
             <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
               <span class="status-chip {{ row.status_class }}">{{ row.status_label }}</span>
-              
-              {# 
-                FIXED: Only show "Launch" for Drafts, and properly enable/disable it.
-                We use `campaign.status == 'draft'` and check template approval.
-              #}
-              {% if campaign.status == 'draft' %}
-                <form method="post" action="/campaigns/workspace/campaigns/{{ campaign.id }}/launch">
 
-                  <button class="button secondary small" type="submit" 
-                    {% if not row.template or row.template.status.value != 'approved' %}disabled{% endif %}
+              {# Only show "Launch" for Drafts, with tooltip if disabled #}
+              {% if campaign.status == 'draft' %}
+                {% set can_launch = row.template and row.template.status.value == 'approved' %}
+                <form method="post" action="/campaigns/workspace/campaigns/{{ campaign.id }}/launch" style="display: inline;">
+                  <button class="button secondary small" type="submit"
+                    {% if not can_launch %}disabled title="Template must be approved before launching"{% endif %}
                     data-i18n="campaigns.list.launch">
                     🚀 Launch
                   </button>
@@ -267,6 +268,11 @@
               {% endif %}
             </div>
           </div>
+          {% if campaign.status == 'draft' and not can_launch %}
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">
+              ⚠️ Template is not approved yet – launch is disabled.
+            </div>
+          {% endif %}
         </div>
       {% else %}
         <div class="empty-state" data-i18n="campaigns.list.empty">

@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from clean_crm.infrastructure.models import CustomerModel, TagModel, CampaignTemplateModel
@@ -42,9 +44,13 @@ def test_create_campaign_template(client: TestClient, db_session: Session, mock_
         "message_body": "Hello {{1}}!",
         "ycloud_template_name": "test_template",
         "language_code": "en_US",
-        "category": "marketing"
+        "category": "marketing",
+        "components_json": json.dumps([
+            {"type": "BODY", "text": "Hello {{1}}!"}
+        ]),
     }
     response = client.post("/campaigns/workspace/templates", data=data)
+    #print("BODY:", response.json()) 
     assert response.status_code == 303
 
     template = db_session.query(CampaignTemplateModel).filter_by(name="Test Template").first()

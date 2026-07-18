@@ -1,15 +1,15 @@
 """add campaign parameter mapping and header media fields
 
-Revision ID: 0004_add_campaign_parameters_and_media
+Revision ID: 0004
 Revises: 0003_campaigns_module
 Create Date: 2026-07-15 00:00:00.000000
 """
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
-revision = "0004_add_campaign_parameters_and_media"
+
+revision = "0004"
 down_revision = "0003_campaigns_module"
 branch_labels = None
 depends_on = None
@@ -19,11 +19,9 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
-    # Only alter the campaigns table if it exists and the columns are missing
     if "campaigns" in inspector.get_table_names():
         campaign_columns = {column["name"] for column in inspector.get_columns("campaigns")}
 
-        # Add parameter_mapping_json (store as JSON)
         if "parameter_mapping_json" not in campaign_columns:
             op.add_column(
                 "campaigns",
@@ -35,7 +33,6 @@ def upgrade() -> None:
                 ),
             )
 
-        # Add header_media_url
         if "header_media_url" not in campaign_columns:
             op.add_column(
                 "campaigns",
@@ -47,7 +44,6 @@ def upgrade() -> None:
                 ),
             )
 
-        # Add header_media_id
         if "header_media_id" not in campaign_columns:
             op.add_column(
                 "campaigns",
@@ -59,9 +55,6 @@ def upgrade() -> None:
                 ),
             )
 
-        # Optionally, add an index on header_media_id for faster lookups
-        # op.create_index("ix_campaigns_header_media_id", "campaigns", ["header_media_id"])
-
 
 def downgrade() -> None:
     bind = op.get_bind()
@@ -70,7 +63,6 @@ def downgrade() -> None:
     if "campaigns" in inspector.get_table_names():
         campaign_columns = {column["name"] for column in inspector.get_columns("campaigns")}
 
-        # Remove columns in reverse order
         if "header_media_id" in campaign_columns:
             op.drop_column("campaigns", "header_media_id")
         if "header_media_url" in campaign_columns:

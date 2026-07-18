@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import re
 import io
 import json
 from collections import Counter, defaultdict
@@ -8,7 +9,7 @@ from datetime import date, datetime
 from os import environ
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from ...infrastructure.ycloud import YCloudClient
 from ...infrastructure.ycloud.exceptions import YCloudApiError
+from ...infrastructure.ycloud.templates import build_send_components, build_create_components
 
 from ...application.UseCases import (
     BatchAssignTagToCustomers,
@@ -103,6 +105,90 @@ def _campaign_repo(session: Session) -> SQLAlchemyCampaignRepository:
 
 def _campaign_recipient_repo(session: Session) -> SQLAlchemyCampaignRecipientRepository:
     return SQLAlchemyCampaignRecipientRepository(session)
+
+def extract_placeholder_indices(text: str) -> list[int]:
+    """Extract all unique placeholder numbers from a string like 'Hello {{1}}, order {{2}}'."""
+    if not text:
+        return []
+    matches = re.findall(r"\{\{(\d+)\}\}", text)
+    return sorted({int(m) for m in matches})
+
+def build_parameters_for_customer(
+    customer: Customer,
+    template: CampaignTemplate,
+    parameter_mapping: dict[int, str],  # e.g., {1: "name", 2: "cellphone"}
+    media_resolver: Callable[[Customer, CampaignTemplateComponent], str | None] | None = None,  # function(customer, comp) -> media_id or link
+) -> list[dict]:
+    """
+    Build the 'components' array (with parameters) for the YCloud send API.
+    """
+    result_components = []
+
+    for comp in template.components:
+        if comp.type == "header" and comp.format in ("image", "video", "document"):
+            media_ref = None
+            if media_resolver:
+                media_ref = media_resolver(customer, comp)
+            if not media_ref:
+                media_ref = environ.get("DEFAULT_MEDIA_LINK", "")
+            # Decide ID vs link
+            if media_ref and media_ref.startswith("http"):
+                media_param = {"link": media_ref}
+            else:
+                media_param = {"id": media_ref} if media_ref else {"link": ""}
+            param_type = comp.format
+            result_components.append({
+                "type": "header",
+                "parameters": [{
+                    "type": param_type,
+                    param_type: media_param
+                }]
+    })
+
+        elif comp.type == "body":
+            text = comp.text or ""
+            indices = extract_placeholder_indices(text)
+            if indices:
+                params = []
+                for idx in indices:
+                    attr_name = parameter_mapping.get(idx)
+                    if attr_name:
+                        value = getattr(customer, attr_name, None) or ""
+                    else:
+                        value = ""
+                    params.append({"type": "text", "text": str(value)})
+                result_components.append({
+                    "type": "body",
+                    "parameters": params
+                })
+            # If no placeholders, we don't need to send a body component (YCloud will use the default)
+            # But if you want to override, you can send an empty parameters array.
+            # We'll skip it to let YCloud use the template default.
+
+        elif comp.type == "button" and comp.sub_type == "url":
+            raw_idx = comp.extra.get("url_placeholder_index")
+            if raw_idx is not None:
+                # Narrow the type to something int() can accept
+                if isinstance(raw_idx, (int, str)):
+                    try:
+                        placeholder_idx = int(raw_idx)
+                    except (ValueError, TypeError):
+                        placeholder_idx = None
+                else:
+                    placeholder_idx = None
+
+                if placeholder_idx is not None:
+                    attr_name = parameter_mapping.get(placeholder_idx)
+                    if attr_name:
+                        value = getattr(customer, attr_name, None) or ""
+                        result_components.append({
+                            "type": "button",
+                            "sub_type": "url",
+                            "index": comp.index,
+                            "parameters": [{"type": "text", "text": str(value)}]
+                        })
+
+    return result_components
 
 
 def _humanize_status(value: Any) -> str:
@@ -438,14 +524,17 @@ def _launch_campaign(
     recipient_repository = _campaign_recipient_repo(session)
     template_repository = _campaign_template_repo(session)
 
-    # 1. Get all customers and their tags
+ # 1. Get all customers and their tags
     customers = ListCustomers(customer_repository).execute()
+    customer_by_id: dict[int, Customer] = {customer.id: customer for customer in customers}   # ← new
+
     tags = ListTags(tag_repository).execute()
     tags_by_customer_id: dict[int, list[Tag]] = defaultdict(list)
     for tag_map in tag_map_repository.list_tag_maps():
         tag = next((t for t in tags if t.id == tag_map.tag_id), None)
         if tag:
             tags_by_customer_id[tag_map.customer_id].append(tag)
+
 
     # 2. Build recipient list (matching the audience rule)
     recipients: list[CampaignRecipientResult] = []
@@ -487,15 +576,37 @@ def _launch_campaign(
     waba_id = environ.get("YCLOUD_WABA_ID")
     if not waba_id:
         raise YCloudConfigurationError("YCLOUD_WABA_ID not set")
+    
+    parameter_mapping = campaign.parameter_mapping or {}
+    header_media_id = campaign.header_media_id
+
+    def media_resolver(customer: Customer, comp: CampaignTemplateComponent):
+        return campaign.header_media_url  # For now, we just return the campaign's header_media_url for all customers
 
     # 6. For each recipient, send the template message
     for rec in recipients:
         if rec.status != CampaignMessageStatus.ACCEPTED:
             continue
 
+        customer = customer_by_id.get(rec.customer_id)
+        if customer is None:
+            rec.status = CampaignMessageStatus.FAILED
+            rec.failure_reason = "Customer not found"
+            continue
+
         phone = rec.recipient_phone
         if not phone.startswith("+"):
             phone = "+" + phone
+
+        raw_mapping = campaign.parameter_mapping or {}
+        parameter_mapping = {int(k): v for k, v in raw_mapping.items() if isinstance(k, (int, str)) and str(k).isdigit()}
+
+        components = build_parameters_for_customer(
+            customer=customer,
+            template=template,
+            parameter_mapping=parameter_mapping,
+            media_resolver=media_resolver
+            )
 
         payload = {
             "from": campaign.sender_phone_number,
@@ -505,18 +616,28 @@ def _launch_campaign(
             "template": {
                 "name": template.ycloud_template_name,
                 "language": {"code": template.language_code},
+                # "components": build_send_components(template, campaign, customer)
                 # If you have placeholders, add them here:
                 # "components": [{"type": "body", "parameters": [{"type": "text", "text": "value"}]}]
             }
         }
+        if components:
+            payload["template"]["components"] = components
 
 # Inside the loop over recipients
         try:
             #print(f"Sending to {phone} with payload: {payload}")
             response = client.send_message(payload)
             #print(f"YCloud response: {response}")  # This will print the dict returned by the client
-            ycloud_id = response.get("id")
-            api_status = response.get("status", "accepted")
+            rec.ycloud_message_id = response.get("id")
+            api_status = str(response.get("status", "accepted")).lower()
+            rec.status = (
+                CampaignMessageStatus.SENT
+                if api_status in {"accepted", "sent", "queued"} 
+                else CampaignMessageStatus.FAILED
+            )
+            if rec.status == CampaignMessageStatus.FAILED:
+                rec.failure_reason = f"YCloud API returned status: {api_status}"
             # ... update recipient as before ...
         except YCloudApiError as e:
             #print(f"YCloudApiError for {phone}: {e}")
@@ -601,24 +722,29 @@ def _sync_all_templates(session: Session) -> dict[str, int]:
                 }
                 status = status_mapping.get(status_str, CampaignTemplateStatus.DRAFT)
 
-                approval_note = remote.get("approvalNote") or remote.get("rejectionReason")
-                components_data = remote.get("components", [])
+                remote_components = remote.get("components", [])
+                local_components = []
+                for rc in remote_components:
+                    comp_type = rc.get("type", "").lower()
+                    comp = CampaignTemplateComponent(
+                        type=comp_type,
+                        format=rc.get("format", "").lower() if comp_type == "header" else None,
+                        text=rc.get("text"),
+                        sub_type=rc.get("sub_type", "").lower() if comp_type == "button" else None,
 
-                components = [
-                    CampaignTemplateComponent(
-                        type=comp.get("type"),
-                        text=comp.get("text"),
+                        index=rc.get("index"),
+                        extra={},
                     )
-                    for comp in components_data
-                ]
+                    local_components.append(comp)
 
+                approval_note = remote.get("approvalNote") or remote.get("rejectionReason")
                 key = (name, language)
                 existing = local_lookup.get(key)
 
                 if existing:
                     existing.status = status
                     existing.category = category
-                    existing.components = components
+                    existing.components = local_components
                     existing.approval_note = approval_note
                     existing.last_synced_at = datetime.utcnow()
                     template_repo.save_template(existing)
@@ -631,7 +757,7 @@ def _sync_all_templates(session: Session) -> dict[str, int]:
                         language_code=language,
                         category=category,
                         status=status,
-                        components=components,
+                        components=local_components,
                         created_at=datetime.utcnow(),
                         last_synced_at=datetime.utcnow(),
                         approval_note=approval_note,
@@ -895,6 +1021,7 @@ def campaigns_workspace_page(
     recipient_repository = _campaign_recipient_repo(session)
 
     customers = ListCustomers(customer_repository).execute()
+    total_contacts_count = len(customers)
     tags = ListTags(tag_repository).execute()
     tags_by_customer_id: dict[int, list[Tag]] = defaultdict(list)
     for tag_map in tag_map_repository.list_tag_maps():
@@ -916,6 +1043,20 @@ def campaigns_workspace_page(
     sender_numbers_raw = environ.get("YCLOUD_SENDER_NUMBERS", "")
     sender_numbers = [num.strip() for num in sender_numbers_raw.split(",") if num.strip()]
 
+    media_url = request.query_params.get("media_url")   # <-- new
+    flash_message = request.query_params.get("message")
+    flash_error = request.query_params.get("error")
+    
+    # form_data: we can pre‑fill header_media_id with the uploaded one
+    form_data = {
+        "name": "",
+        "template_id": "",
+        "sender_phone_number": "",
+        "scheduled_at": "",
+        "parameter_mapping_json": "",
+        "header_media_url": media_url or "",   # <-- changed
+    }
+
     return _render(
         request,
         "campaigns.html",
@@ -926,6 +1067,7 @@ def campaigns_workspace_page(
             "templates": template_rows,
             "campaigns": campaign_rows,
             "preview_recipients": preview_recipients,
+            "total_contacts_count": total_contacts_count,
             "preview_count": len(preview_recipients),
             "preview_filters": SimpleNamespace(
                 tag_ids=tag_ids or [],
@@ -937,7 +1079,9 @@ def campaigns_workspace_page(
             "approved_template_count": approved_template_count,
             "campaign_count": len(campaign_rows),
             "sender_numbers": sender_numbers,  # new context variable
-            "form_data": {},
+            "form_data": form_data,
+            "flash_message": flash_message,
+            "flash_error": flash_error,
         },
     )
 
@@ -978,8 +1122,57 @@ def create_campaign_template(
     ycloud_template_name: str | None = Form(default=None),
     language_code: str = Form(...),
     category: str = Form(...),
+    components_json: str = Form(...),
+    header_type: str = Form(default="none"),
+    header_text: str | None = Form(default=None),
+    body_text: str | None = Form(default=None),
+    footer_text: str | None = Form(default=None),
+    buttons_json: str | None = Form(default=None),
     session: Session = Depends(get_session),
 ):
+    if components_json:
+        try:
+            components_data = json.loads(components_json)
+        except json.JSONDecodeError as error:
+            raise HTTPException(status_code=400, detail="Invalid components JSON.") from error 
+    else:
+        # Build from individual fields
+        components_data = []
+        # Header
+        if header_type != "none":
+            comp = {"type": "HEADER"}
+            if header_type == "text":
+                comp["format"] = "TEXT"
+                comp["text"] = header_text or ""
+            else:
+                comp["format"] = header_type.upper()
+                # Media header: no text, we'll supply URL per campaign
+                comp["text"] = ""
+            components_data.append(comp)
+
+        # Body
+        if body_text:
+            components_data.append({"type": "BODY", "text": body_text})
+        elif message_body:   # fallback
+            components_data.append({"type": "BODY", "text": message_body})
+
+        # Footer
+        if footer_text:
+            components_data.append({"type": "FOOTER", "text": footer_text})
+
+        # Buttons
+        if buttons_json:
+            try:
+                buttons = json.loads(buttons_json)
+                if not isinstance(buttons, list):
+                    raise ValueError
+                components_data.append({"type": "BUTTONS", "buttons": buttons})
+            except (json.JSONDecodeError, ValueError):
+                raise HTTPException(status_code=400, detail="Invalid buttons JSON.")
+    
+    components = [CampaignTemplateComponent.from_dict(item) for item in components_data]
+    ycloud_components = build_create_components(components)
+
     template = CampaignTemplate(
         id=0,
         name=name.strip(),
@@ -987,7 +1180,7 @@ def create_campaign_template(
         language_code=language_code.strip(),
         category=Category(category.strip().lower()),
         status=CampaignTemplateStatus.DRAFT,
-        components=[CampaignTemplateComponent(type="BODY", text=message_body.strip())],
+        components=components,
         created_at=datetime.utcnow(),
     )
     _campaign_template_repo(session).save_template(template)
@@ -997,12 +1190,7 @@ def create_campaign_template(
         "name": template.ycloud_template_name,
         "language": template.language_code,
         "category": template.category.value,
-        "components": [
-            {
-                "type": template.components[0].type,
-                "text": template.components[0].text,
-            }
-        ],
+        "components": ycloud_components,
     })
     return redirect("/campaigns/workspace/templates")
 
@@ -1037,6 +1225,8 @@ def create_campaign(
     city: str = Form(None),
     scheduled_at: str = Form(None),
     action: str = Form(...),  # "send" or "draft"
+    parameter_mapping_json: str | None = Form(default=None),
+    header_media_url: str | None = Form(default=None),
     session: Session = Depends(get_session),
 ):
     # Build audience rule
@@ -1048,6 +1238,15 @@ def create_campaign(
 
     scheduled_dt = _parse_scheduled_at(scheduled_at) if scheduled_at else None
 
+    parameter_mapping = None
+    if parameter_mapping_json:
+        try:
+            parameter_mapping = json.loads(parameter_mapping_json)
+            if not isinstance(parameter_mapping, dict):
+                parameter_mapping = None
+        except json.JSONDecodeError as error:
+            raise HTTPException(status_code=400, detail="Invalid parameter mapping JSON.") from error
+
     # Always save as DRAFT (for both actions)
     campaign = Campaign(
         id=0,
@@ -1058,6 +1257,8 @@ def create_campaign(
         status=CampaignStatus.DRAFT,
         scheduled_for=scheduled_dt,   # store scheduled time for later use
         created_at=datetime.utcnow(),
+        parameter_mapping=parameter_mapping,
+        header_media_url=header_media_url,
     )
 
     campaign_repository = _campaign_repo(session)
@@ -1099,3 +1300,26 @@ def sync_all_templates_endpoint(session: Session = Depends(get_session)):
         raise HTTPException(status_code=500, detail=str(e)) from e
     
     return redirect("/campaigns/workspace")
+
+@router.post("/campaigns/workspace/media/upload")
+async def upload_campaign_media(
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+):
+    content = await file.read()
+    client = _get_ycloud_client()
+
+    sender_numbers_raw = environ.get("YCLOUD_SENDER_NUMBERS", "")
+    sender_numbers = [num.strip() for num in sender_numbers_raw.split(",") if num.strip()]
+    if not sender_numbers:
+        raise HTTPException(status_code=400, detail="No sender numbers configured in YCLOUD_SENDER_NUMBERS.")
+    phone_number = sender_numbers[0]  # Use the first sender number for media upload
+
+    try:
+        media_id = client.upload_media(str(file.filename), file_content=content, phone_number=phone_number)
+        print(f"Uploaded media ID: {media_id}")
+        # Redirect back to campaigns page with media_id as query param
+        return redirect(f"/campaigns/workspace?media_id={media_id}&message=Media uploaded successfully.")
+    except YCloudApiError as e:
+        return redirect(f"/campaigns/workspace?error={str(e)}")

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import time
+import mimetypes
 from typing import Any
 from urllib.parse import quote, urlencode
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from clean_crm.domain.Entities import CampaignTemplateComponent
 
 from .exceptions import (
     YCloudApiError,
@@ -256,3 +260,80 @@ class YCloudClient:
             "GET",
             f"/v2/whatsapp/messages/{quote(message_id, safe='')}",
         )
+    
+    def upload_media(self, filepath: str, file_content: bytes | None = None, phone_number: str | None = None) -> str:
+        if file_content is None:
+            with open(filepath, "rb") as f:
+                file_content = f.read()
+            filename = os.path.basename(filepath)
+        else:
+            filename =  "uploaded_file"  # Default name if content is provided directly
+
+        mime_type, _ = mimetypes.guess_type(filepath)
+        if not mime_type:
+            mime_type = "application/octet-stream"  # Default MIME type if unknown
+
+        boundary = "YCloudBoundary" + str(int(time.time() * 1000))
+        parts =[]
+
+        parts.append(
+            f'--{boundary}\r\n'
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f'Content-Type: {mime_type}\r\n\r\n'
+        )
+
+        parts.append(file_content)
+        parts.append(b'\r\n')
+        parts.append(f'--{boundary}--\r\n'.encode())
+
+        body = b''.join(
+            p.encode() if isinstance(p, str) else p for p in parts
+        )
+
+        url = f"{self.base_url}/v2/whatsapp/media/{phone_number}/upload"
+        request = Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "X-API-Key": self.api_key,
+            },
+        )
+
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                data = response.read().decode()
+                result = json.loads(data)
+                media_id = result.get("id")
+                if not media_id:
+                    raise YCloudApiError("Media ID not found in response.")
+                return media_id
+        except HTTPError as e:
+            error = e.read().decode()
+            raise YCloudApiError(f"HTTP {e.code}: {error}") from e
+        except URLError as e:
+            raise YCloudApiError(str(e.reason)) from e
+        
+    @staticmethod
+    def _to_ycloud_component(comp: "CampaignTemplateComponent") -> dict[str, Any]:
+        comp_type = comp.type.upper()
+        result: dict[str, Any] = {"type": comp_type}
+
+        if comp_type == "HEADER":
+            if comp.format:
+                result["format"] = comp.format.upper()
+                if comp.format.upper() == "TEXT":
+                    result["text"] = comp.text or ""
+            else:
+                result["format"] = "TEXT"
+                result["text"] = comp.text or ""
+
+        elif comp_type == "BODY":
+            result["text"] = comp.text or ""
+
+        elif comp_type == "FOOTER":
+            result["text"] = comp.text or ""
+
+        return result

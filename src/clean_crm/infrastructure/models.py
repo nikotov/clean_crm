@@ -13,7 +13,7 @@ class CustomerModel(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     birthdate: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
@@ -105,6 +105,12 @@ class CampaignModel(Base):
     scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default=func.now())
     launched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+
+    parameter_mapping: Mapped[dict[str, str] | None] = mapped_column(
+        "parameter_mapping_json", JSON, nullable=True
+    )
+    header_media_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    header_media_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     template: Mapped[CampaignTemplateModel] = relationship(back_populates="campaigns")
     recipients: Mapped[list["CampaignRecipientModel"]] = relationship(
