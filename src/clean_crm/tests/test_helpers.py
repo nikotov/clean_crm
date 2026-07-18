@@ -52,7 +52,13 @@ def test_customer_matches_rule_city_match():
 
 def test_customer_matches_rule_birthday_today(monkeypatch):
     today = date(2025, 6, 15)
-    monkeypatch.setattr("clean_crm.interfaces.pages.workspace.date", lambda: today)
+
+    class _FixedDate(date):
+        @classmethod
+        def today(cls):
+            return today
+
+    monkeypatch.setattr("clean_crm.interfaces.pages.workspace.date", _FixedDate)
 
     customer = Customer(id=1, name="Test", email="t@t.com", birthdate=date(1990, 6, 15), created_at=datetime.now(), updated_at=datetime.now())
     rule = CampaignAudienceRule(birthday_today=True)

@@ -30,3 +30,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 clean_crm = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+env_files = [".env"]

@@ -64,7 +64,43 @@
             <option value="MARKETING">Marketing</option>
           </select>
         </div>
-        <button class="button" type="submit" data-i18n="templates.form.button">Save template</button>
+        <div class="field">
+          <label for="header-type">Header type</label>
+          <select id="header-type" name="header_type">
+            <option value="none">None</option>
+            <option value="text">Text</option>
+            <option value="image">Image</option>
+            <option value="video">Video</option>
+            <option value="document">Document</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="header-text">Header text</label>
+          <input id="header-text" name="header_text" type="text" placeholder="e.g., Your order is ready">
+        </div>
+
+        <!-- Body -->
+        <div class="field">
+          <label for="body-text">Body text *</label>
+          <textarea id="body-text" name="body_text" placeholder="Hi {{1}}, your order #{{2}} is ready." required></textarea>
+        </div>
+
+        <!-- Footer -->
+        <div class="field">
+          <label for="footer-text">Footer (optional)</label>
+          <textarea id="footer-text" name="footer_text" placeholder="Thanks for shopping with us!"></textarea>
+        </div>
+
+        <!-- Buttons -->
+        <div class="field">
+          <label for="buttons-json">Buttons (JSON array)</label>
+          <textarea id="buttons-json" name="buttons_json" rows="3" placeholder='[{"type":"QUICK_REPLY","text":"Yes"}, {"type":"URL","text":"Visit","url":"https://x.com/{{1}}"}]'></textarea>
+        </div>
+
+        <!-- Hidden: server will ignore this if we now rely on the new fields -->
+        <input type="hidden" name="components_json" value="{}">
+
+        <button class="button" type="submit">Save template</button>
       </form>
     </article>
 

@@ -760,6 +760,66 @@
           display: grid;
         }
       }
+
+            /* Flash messages */
+      .flash {
+        padding: 12px 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        font-weight: 500;
+      }
+      .flash.success {
+        background: #e6f7e6;
+        color: #2e7d32;
+        border: 1px solid #a5d6a7;
+      }
+      .flash.error {
+        background: #fde8e8;
+        color: #c62828;
+        border: 1px solid #ef9a9a;
+      }
+
+      /* Better status chips – already defined in base.html, but ensure these exist */
+      .status-chip {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+      .status-chip.approved {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+      .status-chip.pending_review {
+        background: #fff3e0;
+        color: #e65100;
+      }
+      .status-chip.draft {
+        background: #f5f5f5;
+        color: #616161;
+      }
+      .status-chip.completed {
+        background: #e3f2fd;
+        color: #0d47a1;
+      }
+      .status-chip.failed {
+        background: #ffebee;
+        color: #b71c1c;
+      }
+
+      /* Button sizes */
+      .button.small {
+        padding: 4px 12px;
+        font-size: 0.85rem;
+      }
+
+      /* Disabled button style */
+      .button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
     </style>
   </head>
   <body>

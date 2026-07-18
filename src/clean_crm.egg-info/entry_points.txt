@@ -1,0 +1,2 @@
+[console_scripts]
+clean-crm = clean_crm.cli:main
